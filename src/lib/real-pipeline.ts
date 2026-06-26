@@ -124,7 +124,7 @@ async function runPipeline(videoId: string, params: StartParams) {
     data: {
       title: params.title,
       durationSec: Math.floor(duration),
-      count: 5,
+      count: params.clipCount,
     },
   });
   await push(`🏆 ${suggestions.length} clips selected by AI:`, { progress: 60 });
