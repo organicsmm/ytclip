@@ -26,10 +26,16 @@ function Dashboard() {
   const [video, setVideo] = useState<VideoRow | null>(null);
   const [clips, setClips] = useState<ClipRow[]>([]);
 
+  useEffect(() => {
+    const savedVideoId = window.localStorage.getItem("skate-active-video-id");
+    if (savedVideoId) setActiveVideoId(savedVideoId);
+  }, []);
+
   // Subscribe to the active video + its clips
   useEffect(() => {
     if (!activeVideoId) return;
     let cancelled = false;
+    let isProcessing = true;
 
     const load = async () => {
       const { data: v } = await supabase
@@ -37,7 +43,11 @@ function Dashboard() {
         .select("*")
         .eq("id", activeVideoId)
         .maybeSingle();
-      if (!cancelled && v) setVideo(v as unknown as VideoRow);
+      if (!cancelled && v) {
+        const nextVideo = v as unknown as VideoRow;
+        isProcessing = nextVideo.status === "processing";
+        setVideo(nextVideo);
+      }
 
       const { data: c } = await supabase
         .from("clips")
@@ -47,6 +57,10 @@ function Dashboard() {
       if (!cancelled && c) setClips(c as unknown as ClipRow[]);
     };
     load();
+
+    const poll = window.setInterval(() => {
+      if (isProcessing) void load();
+    }, 1500);
 
     const channel = supabase
       .channel(`video:${activeVideoId}`)
@@ -66,9 +80,17 @@ function Dashboard() {
 
     return () => {
       cancelled = true;
+      window.clearInterval(poll);
       supabase.removeChannel(channel);
     };
   }, [activeVideoId]);
+
+  const handleJobStarted = (videoId: string) => {
+    window.localStorage.setItem("skate-active-video-id", videoId);
+    setClips([]);
+    setVideo(null);
+    setActiveVideoId(videoId);
+  };
 
   return (
     <main className="mx-auto max-w-7xl px-6 py-10">
@@ -76,7 +98,7 @@ function Dashboard() {
 
       <section className="mt-12 grid gap-6 lg:grid-cols-5">
         <div className="lg:col-span-3">
-          <SubmissionPanel onJobStarted={setActiveVideoId} disabled={video?.status === "processing"} />
+          <SubmissionPanel onJobStarted={handleJobStarted} disabled={video?.status === "processing"} />
         </div>
         <div className="lg:col-span-2">
           <PipelineTerminal video={video} />
