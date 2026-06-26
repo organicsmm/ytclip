@@ -13,12 +13,8 @@ import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Link2, Upload, Sparkles, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { z } from "zod";
-import { startMockPipeline } from "@/lib/mock-pipeline";
+import { startRealPipeline } from "@/lib/real-pipeline";
 import type { PipelineConfig } from "@/lib/skate-types";
-
-const YT = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+/i;
-const youtubeSchema = z.string().trim().regex(YT, "Enter a valid YouTube URL");
 
 interface Props {
   onJobStarted: (videoId: string) => void;
@@ -37,29 +33,22 @@ export function SubmissionPanel({ onJobStarted, disabled }: Props) {
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
-      let title = "Untitled video";
-      let sourceUrl: string | null = null;
-
       if (tab === "youtube") {
-        const parsed = youtubeSchema.safeParse(url);
-        if (!parsed.success) {
-          toast.error(parsed.error.issues[0]?.message ?? "Invalid URL");
-          return;
-        }
-        sourceUrl = parsed.data;
-        title = deriveYouTubeTitle(parsed.data);
-      } else {
-        if (!file) {
-          toast.error("Choose a video file to upload");
-          return;
-        }
-        title = file.name.replace(/\.[^.]+$/, "");
+        toast.error("YouTube fetch unavailable", {
+          description:
+            "Browser-only mode can't download from YouTube. Download the video and upload the file instead.",
+        });
+        return;
       }
+      if (!file) {
+        toast.error("Choose a video file to upload");
+        return;
+      }
+      const title = file.name.replace(/\.[^.]+$/, "");
 
-      const videoId = await startMockPipeline({
+      const videoId = await startRealPipeline({
+        file,
         title,
-        source_url: sourceUrl,
-        source_type: tab,
         config: {
           aspect_ratio: aspect,
           subtitle_style: subStyle,
@@ -68,7 +57,9 @@ export function SubmissionPanel({ onJobStarted, disabled }: Props) {
       });
 
       onJobStarted(videoId);
-      toast.success("Pipeline started", { description: "Watch the terminal for live progress." });
+      toast.success("Pipeline started", {
+        description: "ffmpeg.wasm is rendering your clips locally.",
+      });
     } catch (e) {
       const message = e instanceof Error ? e.message : "Failed to start pipeline";
       toast.error(message);
@@ -192,12 +183,3 @@ function ConfigField({ label, children }: { label: string; children: React.React
   );
 }
 
-function deriveYouTubeTitle(url: string): string {
-  try {
-    const u = new URL(url);
-    const id = u.searchParams.get("v") || u.pathname.split("/").filter(Boolean).pop();
-    return id ? `YouTube · ${id}` : "YouTube video";
-  } catch {
-    return "YouTube video";
-  }
-}
