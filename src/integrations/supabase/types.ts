@@ -14,7 +14,101 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      clips: {
+        Row: {
+          aspect_ratio: string
+          created_at: string
+          end_time: number
+          hashtags: string[]
+          hook: string | null
+          id: string
+          score: number
+          start_time: number
+          title: string
+          video_id: string
+          video_url: string | null
+        }
+        Insert: {
+          aspect_ratio?: string
+          created_at?: string
+          end_time: number
+          hashtags?: string[]
+          hook?: string | null
+          id?: string
+          score?: number
+          start_time: number
+          title: string
+          video_id: string
+          video_url?: string | null
+        }
+        Update: {
+          aspect_ratio?: string
+          created_at?: string
+          end_time?: number
+          hashtags?: string[]
+          hook?: string | null
+          id?: string
+          score?: number
+          start_time?: number
+          title?: string
+          video_id?: string
+          video_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clips_video_id_fkey"
+            columns: ["video_id"]
+            isOneToOne: false
+            referencedRelation: "videos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      videos: {
+        Row: {
+          config: Json
+          created_at: string
+          error: string | null
+          id: string
+          log_lines: string[]
+          progress: number
+          source_type: string
+          source_url: string | null
+          stage: string
+          status: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          config?: Json
+          created_at?: string
+          error?: string | null
+          id?: string
+          log_lines?: string[]
+          progress?: number
+          source_type?: string
+          source_url?: string | null
+          stage?: string
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Update: {
+          config?: Json
+          created_at?: string
+          error?: string | null
+          id?: string
+          log_lines?: string[]
+          progress?: number
+          source_type?: string
+          source_url?: string | null
+          stage?: string
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
