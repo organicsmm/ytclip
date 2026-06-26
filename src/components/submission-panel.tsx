@@ -22,8 +22,7 @@ interface Props {
 }
 
 export function SubmissionPanel({ onJobStarted, disabled }: Props) {
-  const [tab, setTab] = useState<"youtube" | "upload">("youtube");
-  const [url, setUrl] = useState("");
+  const [tab, setTab] = useState<"youtube" | "upload">("upload");
   const [file, setFile] = useState<File | null>(null);
   const [aspect, setAspect] = useState<PipelineConfig["aspect_ratio"]>("9:16");
   const [subStyle, setSubStyle] = useState<PipelineConfig["subtitle_style"]>("tiktok");
@@ -88,18 +87,21 @@ export function SubmissionPanel({ onJobStarted, disabled }: Props) {
         </TabsList>
 
         <TabsContent value="youtube" className="mt-5">
-          <Label htmlFor="yt-url" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            Video URL
-          </Label>
-          <Input
-            id="yt-url"
-            type="url"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://youtube.com/watch?v=..."
-            className="mt-2 h-12 border-border bg-surface/60 font-mono text-sm placeholder:text-muted-foreground/50"
-            maxLength={500}
-          />
+          <div className="rounded-xl border border-dashed border-border/70 bg-surface/40 p-5 text-sm text-muted-foreground">
+            <p className="font-medium text-foreground">YouTube direct fetch is off in browser-only mode.</p>
+            <p className="mt-1.5">
+              Skate runs the entire pipeline locally (ffmpeg.wasm + Lovable AI) — no external
+              workers. Download the source video and use the{" "}
+              <button
+                type="button"
+                onClick={() => setTab("upload")}
+                className="font-medium text-primary underline-offset-2 hover:underline"
+              >
+                Local Upload
+              </button>{" "}
+              tab.
+            </p>
+          </div>
         </TabsContent>
 
         <TabsContent value="upload" className="mt-5">
