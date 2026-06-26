@@ -17,6 +17,7 @@ interface StartParams {
   file: File;
   title: string;
   config: PipelineConfig;
+  clipCount: number;
 }
 
 let ffmpegSingleton: FFmpeg | null = null;
