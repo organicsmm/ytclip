@@ -37,14 +37,14 @@ function Dashboard() {
         .select("*")
         .eq("id", activeVideoId)
         .maybeSingle();
-      if (!cancelled && v) setVideo(v as VideoRow);
+      if (!cancelled && v) setVideo(v as unknown as VideoRow);
 
       const { data: c } = await supabase
         .from("clips")
         .select("*")
         .eq("video_id", activeVideoId)
         .order("score", { ascending: false });
-      if (!cancelled && c) setClips(c as ClipRow[]);
+      if (!cancelled && c) setClips(c as unknown as ClipRow[]);
     };
     load();
 
@@ -54,7 +54,7 @@ function Dashboard() {
         "postgres_changes",
         { event: "*", schema: "public", table: "videos", filter: `id=eq.${activeVideoId}` },
         (payload) => {
-          if (payload.new) setVideo(payload.new as VideoRow);
+          if (payload.new) setVideo(payload.new as unknown as VideoRow);
         },
       )
       .on(

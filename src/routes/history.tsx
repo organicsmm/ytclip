@@ -31,7 +31,7 @@ function HistoryPage() {
         .order("created_at", { ascending: false })
         .limit(50);
       if (!cancelled) {
-        setVideos((data ?? []) as VideoRow[]);
+        setVideos((data ?? []) as unknown as VideoRow[]);
         setLoading(false);
       }
     })();
