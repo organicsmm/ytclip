@@ -27,6 +27,7 @@ export function SubmissionPanel({ onJobStarted, disabled }: Props) {
   const [aspect, setAspect] = useState<PipelineConfig["aspect_ratio"]>("9:16");
   const [subStyle, setSubStyle] = useState<PipelineConfig["subtitle_style"]>("tiktok");
   const [faceTracking, setFaceTracking] = useState(false);
+  const [clipCount, setClipCount] = useState(5);
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async () => {
@@ -48,6 +49,7 @@ export function SubmissionPanel({ onJobStarted, disabled }: Props) {
       const videoId = await startRealPipeline({
         file,
         title,
+        clipCount,
         config: {
           aspect_ratio: aspect,
           subtitle_style: subStyle,
@@ -145,7 +147,34 @@ export function SubmissionPanel({ onJobStarted, disabled }: Props) {
         </ConfigField>
       </div>
 
-      <div className="mt-5 flex items-center justify-between rounded-xl border border-border/60 bg-surface/40 px-4 py-3">
+      <div className="mt-5 rounded-xl border border-border/60 bg-surface/40 px-4 py-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium">Number of Clips</p>
+            <p className="text-xs text-muted-foreground">
+              How many viral shorts to generate from this video.
+            </p>
+          </div>
+          <span className="font-mono text-2xl font-bold text-primary tabular-nums">
+            {clipCount}
+          </span>
+        </div>
+        <input
+          type="range"
+          min={1}
+          max={8}
+          step={1}
+          value={clipCount}
+          onChange={(e) => setClipCount(Number(e.target.value))}
+          className="mt-3 h-1.5 w-full cursor-pointer appearance-none rounded-full bg-surface accent-primary"
+        />
+        <div className="mt-1 flex justify-between font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+          <span>1</span>
+          <span>8</span>
+        </div>
+      </div>
+
+      <div className="mt-3 flex items-center justify-between rounded-xl border border-border/60 bg-surface/40 px-4 py-3">
         <div>
           <p className="text-sm font-medium">AI Face Tracking</p>
           <p className="text-xs text-muted-foreground">
