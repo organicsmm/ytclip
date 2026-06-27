@@ -119,22 +119,28 @@ export function SubmissionPanel({ onJobStarted, disabled }: Props) {
         </TabsList>
 
         <TabsContent value="youtube" className="mt-5">
-          <div className="rounded-xl border border-dashed border-border/70 bg-surface/40 p-5 text-sm text-muted-foreground">
-            <p className="font-medium text-foreground">YouTube direct fetch is off in browser-only mode.</p>
-            <p className="mt-1.5">
-              Skate runs the entire pipeline locally (ffmpeg.wasm + Lovable AI) — no external
-              workers. Download the source video and use the{" "}
-              <button
-                type="button"
-                onClick={() => setTab("upload")}
-                className="font-medium text-primary underline-offset-2 hover:underline"
-              >
-                Local Upload
-              </button>{" "}
-              tab.
+          <Label htmlFor="yt" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            YouTube URL
+          </Label>
+          <Input
+            id="yt"
+            type="url"
+            placeholder="https://www.youtube.com/watch?v=…"
+            value={ytUrl}
+            onChange={(e) => setYtUrl(e.target.value)}
+            className="mt-2 h-12 border-border bg-surface/60"
+          />
+          <p className="mt-2 text-xs text-muted-foreground">
+            We resolve the stream server-side, then run ffmpeg.wasm + Lovable AI in your browser.
+            Works best on videos under ~20 min.
+          </p>
+          {ytStatus && (
+            <p className="mt-3 flex items-center gap-2 text-xs text-primary">
+              <Loader2 className="h-3 w-3 animate-spin" /> {ytStatus}
             </p>
-          </div>
+          )}
         </TabsContent>
+
 
         <TabsContent value="upload" className="mt-5">
           <Label htmlFor="file" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
