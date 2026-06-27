@@ -11,6 +11,8 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as HistoryRouteImport } from './routes/history'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiPublicYtResolveRouteImport } from './routes/api/public/yt-resolve'
+import { Route as ApiPublicYtProxyRouteImport } from './routes/api/public/yt-proxy'
 
 const HistoryRoute = HistoryRouteImport.update({
   id: '/history',
@@ -22,31 +24,58 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicYtResolveRoute = ApiPublicYtResolveRouteImport.update({
+  id: '/api/public/yt-resolve',
+  path: '/api/public/yt-resolve',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicYtProxyRoute = ApiPublicYtProxyRouteImport.update({
+  id: '/api/public/yt-proxy',
+  path: '/api/public/yt-proxy',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/history': typeof HistoryRoute
+  '/api/public/yt-proxy': typeof ApiPublicYtProxyRoute
+  '/api/public/yt-resolve': typeof ApiPublicYtResolveRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/history': typeof HistoryRoute
+  '/api/public/yt-proxy': typeof ApiPublicYtProxyRoute
+  '/api/public/yt-resolve': typeof ApiPublicYtResolveRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/history': typeof HistoryRoute
+  '/api/public/yt-proxy': typeof ApiPublicYtProxyRoute
+  '/api/public/yt-resolve': typeof ApiPublicYtResolveRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/history'
+  fullPaths:
+    | '/'
+    | '/history'
+    | '/api/public/yt-proxy'
+    | '/api/public/yt-resolve'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/history'
-  id: '__root__' | '/' | '/history'
+  to: '/' | '/history' | '/api/public/yt-proxy' | '/api/public/yt-resolve'
+  id:
+    | '__root__'
+    | '/'
+    | '/history'
+    | '/api/public/yt-proxy'
+    | '/api/public/yt-resolve'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   HistoryRoute: typeof HistoryRoute
+  ApiPublicYtProxyRoute: typeof ApiPublicYtProxyRoute
+  ApiPublicYtResolveRoute: typeof ApiPublicYtResolveRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -65,23 +94,29 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/yt-resolve': {
+      id: '/api/public/yt-resolve'
+      path: '/api/public/yt-resolve'
+      fullPath: '/api/public/yt-resolve'
+      preLoaderRoute: typeof ApiPublicYtResolveRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/yt-proxy': {
+      id: '/api/public/yt-proxy'
+      path: '/api/public/yt-proxy'
+      fullPath: '/api/public/yt-proxy'
+      preLoaderRoute: typeof ApiPublicYtProxyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   HistoryRoute: HistoryRoute,
+  ApiPublicYtProxyRoute: ApiPublicYtProxyRoute,
+  ApiPublicYtResolveRoute: ApiPublicYtResolveRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
