@@ -22,32 +22,61 @@ interface Props {
 }
 
 export function SubmissionPanel({ onJobStarted, disabled }: Props) {
-  const [tab, setTab] = useState<"youtube" | "upload">("upload");
+  const [tab, setTab] = useState<"youtube" | "upload">("youtube");
   const [file, setFile] = useState<File | null>(null);
+  const [ytUrl, setYtUrl] = useState("");
+  const [ytStatus, setYtStatus] = useState<string | null>(null);
   const [aspect, setAspect] = useState<PipelineConfig["aspect_ratio"]>("9:16");
   const [subStyle, setSubStyle] = useState<PipelineConfig["subtitle_style"]>("tiktok");
   const [faceTracking, setFaceTracking] = useState(false);
   const [clipCount, setClipCount] = useState(5);
   const [submitting, setSubmitting] = useState(false);
 
+  const fetchYouTube = async (): Promise<{ file: File; title: string }> => {
+    setYtStatus("Resolving YouTube video…");
+    const resolveRes = await fetch(`/api/public/yt-resolve?url=${encodeURIComponent(ytUrl)}`);
+    if (!resolveRes.ok) {
+      const body = await resolveRes.json().catch(() => ({}));
+      throw new Error(body.error || `Resolve failed (${resolveRes.status})`);
+    }
+    const meta = (await resolveRes.json()) as {
+      title: string;
+      streamUrl: string;
+      mimeType: string;
+      durationSec: number;
+    };
+    setYtStatus(`Downloading "${meta.title}"…`);
+    const proxied = `/api/public/yt-proxy?u=${encodeURIComponent(meta.streamUrl)}`;
+    const dl = await fetch(proxied);
+    if (!dl.ok) throw new Error(`Download failed (${dl.status})`);
+    const blob = await dl.blob();
+    const safeName = meta.title.replace(/[^\w\s-]/g, "").slice(0, 60) || "youtube-video";
+    const file = new File([blob], `${safeName}.mp4`, { type: meta.mimeType || "video/mp4" });
+    setYtStatus(null);
+    return { file, title: meta.title };
+  };
+
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
+      let sourceFile: File | null = file;
+      let title = file?.name.replace(/\.[^.]+$/, "") ?? "";
+
       if (tab === "youtube") {
-        toast.error("YouTube fetch unavailable", {
-          description:
-            "Browser-only mode can't download from YouTube. Download the video and upload the file instead.",
-        });
-        return;
-      }
-      if (!file) {
+        if (!ytUrl.trim()) {
+          toast.error("Paste a YouTube URL first");
+          return;
+        }
+        const fetched = await fetchYouTube();
+        sourceFile = fetched.file;
+        title = fetched.title;
+      } else if (!sourceFile) {
         toast.error("Choose a video file to upload");
         return;
       }
-      const title = file.name.replace(/\.[^.]+$/, "");
 
       const videoId = await startRealPipeline({
-        file,
+        file: sourceFile!,
         title,
         clipCount,
         config: {
@@ -66,6 +95,7 @@ export function SubmissionPanel({ onJobStarted, disabled }: Props) {
       toast.error(message);
     } finally {
       setSubmitting(false);
+      setYtStatus(null);
     }
   };
 
@@ -89,22 +119,28 @@ export function SubmissionPanel({ onJobStarted, disabled }: Props) {
         </TabsList>
 
         <TabsContent value="youtube" className="mt-5">
-          <div className="rounded-xl border border-dashed border-border/70 bg-surface/40 p-5 text-sm text-muted-foreground">
-            <p className="font-medium text-foreground">YouTube direct fetch is off in browser-only mode.</p>
-            <p className="mt-1.5">
-              Skate runs the entire pipeline locally (ffmpeg.wasm + Lovable AI) — no external
-              workers. Download the source video and use the{" "}
-              <button
-                type="button"
-                onClick={() => setTab("upload")}
-                className="font-medium text-primary underline-offset-2 hover:underline"
-              >
-                Local Upload
-              </button>{" "}
-              tab.
+          <Label htmlFor="yt" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            YouTube URL
+          </Label>
+          <Input
+            id="yt"
+            type="url"
+            placeholder="https://www.youtube.com/watch?v=…"
+            value={ytUrl}
+            onChange={(e) => setYtUrl(e.target.value)}
+            className="mt-2 h-12 border-border bg-surface/60"
+          />
+          <p className="mt-2 text-xs text-muted-foreground">
+            We resolve the stream server-side, then run ffmpeg.wasm + Lovable AI in your browser.
+            Works best on videos under ~20 min.
+          </p>
+          {ytStatus && (
+            <p className="mt-3 flex items-center gap-2 text-xs text-primary">
+              <Loader2 className="h-3 w-3 animate-spin" /> {ytStatus}
             </p>
-          </div>
+          )}
         </TabsContent>
+
 
         <TabsContent value="upload" className="mt-5">
           <Label htmlFor="file" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
