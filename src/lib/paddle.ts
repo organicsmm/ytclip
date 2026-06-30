@@ -3,6 +3,9 @@ import { supabase } from "@/integrations/supabase/client";
 
 let paddlePromise: Promise<Paddle | undefined> | null = null;
 
+type PaddleEvent = { name?: string };
+const listeners = new Set<(e: PaddleEvent) => void>();
+
 export function getPaddle(): Promise<Paddle | undefined> {
   if (typeof window === "undefined") return Promise.resolve(undefined);
   if (paddlePromise) return paddlePromise;
@@ -17,7 +20,19 @@ export function getPaddle(): Promise<Paddle | undefined> {
     return Promise.resolve(undefined);
   }
 
-  paddlePromise = initializePaddle({ environment: env, token });
+  paddlePromise = initializePaddle({
+    environment: env,
+    token,
+    eventCallback: (event) => {
+      listeners.forEach((fn) => {
+        try {
+          fn(event as PaddleEvent);
+        } catch (err) {
+          console.error("[paddle] listener threw", err);
+        }
+      });
+    },
+  });
   return paddlePromise;
 }
 
@@ -54,10 +69,20 @@ export async function openCheckout({ plan, onComplete, onClose }: OpenCheckoutOp
 
   const { data } = await supabase.auth.getUser();
   const userId = data.user?.id;
-  if (!userId) {
-    return { ok: false, reason: "You must be signed in to upgrade." };
-  }
+  if (!userId) return { ok: false, reason: "You must be signed in to upgrade." };
   const email = data.user?.email ?? undefined;
+
+  // Register a one-shot listener for this checkout's lifecycle.
+  const handler = (event: PaddleEvent) => {
+    if (event.name === "checkout.completed") {
+      listeners.delete(handler);
+      onComplete?.();
+    } else if (event.name === "checkout.closed") {
+      listeners.delete(handler);
+      onClose?.();
+    }
+  };
+  listeners.add(handler);
 
   paddle.Checkout.open({
     items: [{ priceId, quantity: 1 }],
@@ -70,43 +95,6 @@ export async function openCheckout({ plan, onComplete, onClose }: OpenCheckoutOp
       allowLogout: false,
     },
   });
-
-  // Paddle JS dispatches events globally; wire one-shot listeners on the
-  // Paddle instance via eventCallback (set once below in initializePaddle).
-  // For per-checkout success/close handling we listen at window level
-  // since paddle-js fires checkout events that bubble through its callback.
-  const handleEvent = (event: { name?: string }) => {
-    if (event.name === "checkout.completed") {
-      onComplete?.();
-      cleanup();
-    } else if (event.name === "checkout.closed") {
-      onClose?.();
-      cleanup();
-    }
-  };
-
-  // paddle-js exposes events via initializePaddle's eventCallback, but for
-  // local one-shot wiring we poll the URL hash + the visibility of the
-  // overlay. Simpler: rely on successUrl redirect + onClose timer fallback.
-  let cleanup = () => {};
-  const closedFallback = window.setTimeout(() => {
-    // Paddle overlay auto-removes on close; we treat user-driven close as
-    // resolved after a generous wait so refetch happens either way.
-  }, 0);
-  cleanup = () => window.clearTimeout(closedFallback);
-
-  // Best-effort: paddle-js calls global Paddle.Event.* — capture via
-  // a window listener some setups expose.
-  const onPaddleEvent = (e: Event) => {
-    const detail = (e as CustomEvent).detail as { name?: string } | undefined;
-    if (detail) handleEvent(detail);
-  };
-  window.addEventListener("paddle-event", onPaddleEvent as EventListener);
-  const origCleanup = cleanup;
-  cleanup = () => {
-    origCleanup();
-    window.removeEventListener("paddle-event", onPaddleEvent as EventListener);
-  };
 
   return { ok: true };
 }
