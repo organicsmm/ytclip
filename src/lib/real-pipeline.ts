@@ -8,7 +8,7 @@
  * No external APIs. No external workers.
  */
 import { FFmpeg } from "@ffmpeg/ffmpeg";
-import { fetchFile, toBlobURL } from "@ffmpeg/util";
+import { toBlobURL } from "@ffmpeg/util";
 import { supabase } from "@/integrations/supabase/client";
 import { ensureSessionUser } from "@/lib/session";
 import { generateClipSuggestions } from "@/lib/ai.functions";
