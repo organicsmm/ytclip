@@ -358,16 +358,14 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
       <Button
         onClick={handleSubmit}
         disabled={submitting || disabled}
-        className="btn-glow mt-7 h-12 w-full rounded-xl font-display text-base font-semibold"
+        className="btn-glow mt-8 h-14 w-full rounded-none text-[11px] font-semibold uppercase tracking-[0.28em]"
       >
         {submitting ? (
           <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Starting…
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Initialising…
           </>
         ) : (
-          <>
-            <Sparkles className="mr-2 h-4 w-4" /> Generate Viral Clips
-          </>
+          <>Generate Clips</>
         )}
       </Button>
     </div>
