@@ -1,6 +1,70 @@
 import type { ClipRow, VideoRow } from "@/lib/autocliper-types";
-import { Download, Clock } from "lucide-react";
+import { Download, Clock, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useState } from "react";
+import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+
+/** Extract the storage object path from a Supabase signed/public URL for the `clips` bucket. */
+function extractClipsPath(url: string): string | null {
+  try {
+    const u = new URL(url);
+    // Signed:  /storage/v1/object/sign/clips/<path>?token=...
+    // Public:  /storage/v1/object/public/clips/<path>
+    // Auth:    /storage/v1/object/authenticated/clips/<path>
+    const m = u.pathname.match(/\/storage\/v1\/object\/(?:sign|public|authenticated)\/clips\/(.+)$/);
+    return m ? decodeURIComponent(m[1]) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function downloadClip(clip: ClipRow): Promise<void> {
+  if (!clip.video_url) {
+    toast.info("Still rendering", {
+      description: "Hang tight — this clip will be ready in a moment.",
+    });
+    return;
+  }
+  const path = extractClipsPath(clip.video_url);
+  if (!path) {
+    // Fallback: best-effort direct link
+    window.open(clip.video_url, "_blank", "noopener");
+    return;
+  }
+
+  // Mint a fresh short-lived signed URL each click (the stored one may have expired).
+  const { data: signed, error: signErr } = await supabase.storage
+    .from("clips")
+    .createSignedUrl(path, 60 * 10);
+
+  if (signErr || !signed?.signedUrl) {
+    toast.error("Couldn't generate download link", {
+      description: signErr?.message ?? "You may need to sign back in.",
+    });
+    return;
+  }
+
+  // Fetch as blob so the browser saves the file rather than navigating.
+  try {
+    const res = await fetch(signed.signedUrl);
+    if (!res.ok) throw new Error(`Download failed (${res.status})`);
+    const blob = await res.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = objectUrl;
+    const safe = clip.title.replace(/[^\w\s-]/g, "").trim().slice(0, 60) || "clip";
+    a.download = `${safe}.mp4`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 5_000);
+  } catch (e) {
+    toast.error("Download failed", {
+      description: e instanceof Error ? e.message : "Try again in a moment.",
+    });
+  }
+}
 
 interface Props {
   video: VideoRow | null;
@@ -89,6 +153,19 @@ function SectionHeader({
 
 function ClipCard({ clip }: { clip: ClipRow }) {
   const duration = clip.end_time - clip.start_time;
+  const [downloading, setDownloading] = useState(false);
+  const ready = !!clip.video_url;
+
+  const handleDownload = async () => {
+    if (downloading) return;
+    setDownloading(true);
+    try {
+      await downloadClip(clip);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   return (
     <article className="paper-card group flex flex-col overflow-hidden transition-colors hover:border-[color:var(--color-ink)]/30">
       <div
@@ -144,18 +221,24 @@ function ClipCard({ clip }: { clip: ClipRow }) {
         )}
         <div className="mt-5 flex-1" />
         <Button
-          asChild={!!clip.video_url}
+          type="button"
+          onClick={handleDownload}
           className="btn-glow mt-3 h-11 w-full rounded-none text-[10px] font-semibold uppercase tracking-[0.28em]"
-          disabled={!clip.video_url}
+          disabled={!ready || downloading}
+          title={ready ? "Download MP4" : "Clip is still rendering — try again in a moment"}
         >
-          {clip.video_url ? (
-            <a href={clip.video_url} download>
+          {downloading ? (
+            <>
+              <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> Preparing…
+            </>
+          ) : ready ? (
+            <>
               <Download className="mr-2 h-3.5 w-3.5" /> Download MP4
-            </a>
+            </>
           ) : (
-            <span>
-              <Download className="mr-2 h-3.5 w-3.5" /> Rendering…
-            </span>
+            <>
+              <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> Rendering…
+            </>
           )}
         </Button>
       </div>
