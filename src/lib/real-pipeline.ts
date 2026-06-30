@@ -135,7 +135,18 @@ async function runPipeline(videoId: string, userId: string, params: StartParams)
   const inputName = `in.${ext}`;
   await ff.writeFile(inputName, await fetchFile(params.file));
 
-  const duration = await probeDuration(params.file);
+  let duration = 0;
+  try {
+    duration = await probeDuration(params.file, 8000);
+  } catch {
+    await push("   browser couldn't read metadata, probing with ffmpeg…");
+  }
+  if (!duration || !isFinite(duration)) {
+    duration = await probeDurationWithFFmpeg(ff, inputName);
+  }
+  if (!duration || !isFinite(duration) || duration <= 0) {
+    throw new Error("Could not determine video duration");
+  }
   await push(`🎬 Source duration: ${fmtTime(duration)} (${Math.floor(duration)}s)`, {
     progress: 42,
   });
