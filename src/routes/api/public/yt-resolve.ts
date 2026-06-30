@@ -79,7 +79,7 @@ function isAllowedMediaUrl(raw: string): boolean {
 async function resolveWithModal(
   videoId: string,
   cleanYtUrl: string,
-): Promise<{ ok: ResolvePayload } | { err: string } | null> {
+): Promise<{ ok: ResolvePayload } | { err: string; status?: number } | null> {
   const base = process.env.MODAL_YT_URL;
   const token = process.env.MODAL_AUTH_TOKEN;
   if (!base || !token) return null;
@@ -91,8 +91,15 @@ async function resolveWithModal(
     );
     if (!res.ok) {
       const body = await res.text().catch(() => "");
-      console.error("[modal] /info failed", res.status, body.slice(0, 500));
-      return { err: `Modal ${res.status}: ${body.slice(0, 200) || res.statusText}` };
+      let detail = body;
+      try {
+        const parsed = JSON.parse(body) as { detail?: unknown; error?: unknown };
+        detail = String(parsed.detail ?? parsed.error ?? body);
+      } catch {
+        // Modal platform errors are usually plain text.
+      }
+      console.error("[modal] /info failed", res.status, detail.slice(0, 500));
+      return { err: `Modal ${res.status}: ${detail.slice(0, 200) || res.statusText}`, status: 502 };
     }
     const data = (await res.json()) as {
       title?: string;
@@ -101,7 +108,7 @@ async function resolveWithModal(
       mime_type?: string;
       stream_path?: string;
     };
-    if (!data.stream_path) return { err: "Modal returned no stream_path" };
+    if (!data.stream_path) return { err: "Modal returned no stream_path", status: 502 };
     const streamUrl = `${base.replace(/\/$/, "")}${data.stream_path}`;
     return {
       ok: {
@@ -117,7 +124,7 @@ async function resolveWithModal(
     };
   } catch (e) {
     console.error("[modal] fetch threw", e);
-    return { err: `Modal network error: ${(e as Error).message}` };
+    return { err: `Modal network error: ${(e as Error).message}`, status: 502 };
   }
 }
 
@@ -172,8 +179,9 @@ export const Route = createFileRoute("/api/public/yt-resolve")({
         const modalResult = await resolveWithModal(videoId, cleanYtUrlEarly);
         if (modalResult && "ok" in modalResult) return Response.json(modalResult.ok);
         const modalErr = modalResult && "err" in modalResult ? modalResult.err : "Modal not configured";
+        const status = modalResult && "err" in modalResult ? modalResult.status ?? 502 : 503;
 
-        return Response.json({ error: modalErr });
+        return Response.json({ error: modalErr }, { status });
       },
     },
   },
