@@ -192,13 +192,6 @@ async function runPipeline(videoId: string, userId: string, params: StartParams)
       .eq("id", videoId);
   };
 
-  // Keep the browser render light. ffmpeg.wasm is CPU-bound, so 540x960 is far
-  // more reliable than 720x1280 while still being usable for Shorts/Reels.
-  const cropFilter =
-    params.config.aspect_ratio === "9:16"
-      ? "scale=540:960:force_original_aspect_ratio=increase:flags=fast_bilinear,crop=540:960,setsar=1"
-      : "scale=720:720:force_original_aspect_ratio=increase:flags=fast_bilinear,crop=720:720,setsar=1";
-
   for (let i = 0; i < suggestions.length; i++) {
     const c = suggestions[i];
     const outName = `clip_${i}.mp4`;
@@ -208,46 +201,6 @@ async function runPipeline(videoId: string, userId: string, params: StartParams)
     const dur = durationSec.toString();
 
     await push(`   rendering ${i + 1}/${suggestions.length} · ${c.title.slice(0, 40)}…`);
-
-    const buildVerticalArgs = (audioCodec: "aac" | "copy", filter: string): string[] => [
-      "-hide_banner",
-      "-noaccurate_seek",
-      "-ss",
-      startStr,
-      "-i",
-      inputName,
-      "-t",
-      dur,
-      "-map",
-      "0:v:0",
-      "-map",
-      "0:a:0?",
-      "-sn",
-      "-dn",
-      "-vf",
-      filter,
-      "-r",
-      "24",
-      "-c:v",
-      "libx264",
-      "-preset",
-      "ultrafast",
-      "-crf",
-      "34",
-      "-pix_fmt",
-      "yuv420p",
-      ...(audioCodec === "aac"
-        ? ["-c:a", "aac", "-b:a", "96k", "-ac", "2"]
-        : ["-c:a", "copy"]),
-      "-movflags",
-      "+faststart",
-      "-avoid_negative_ts",
-      "make_zero",
-      "-threads",
-      "1",
-      "-y",
-      outName,
-    ];
 
     const buildFastCutArgs = (): string[] => [
       "-hide_banner",
@@ -274,62 +227,40 @@ async function runPipeline(videoId: string, userId: string, params: StartParams)
       outName,
     ];
 
-    const compactFilter =
-      params.config.aspect_ratio === "9:16"
-        ? "scale=360:640:force_original_aspect_ratio=increase:flags=fast_bilinear,crop=360:640,setsar=1"
-        : "scale=480:480:force_original_aspect_ratio=increase:flags=fast_bilinear,crop=480:480,setsar=1";
+    let blob: Blob | null = null;
+    let usedPlan = "browser recorder";
+    try {
+      blob = await renderClipWithMediaRecorder(params.file, c.start_time, durationSec, params.config.aspect_ratio, (ratio) => {
+        const pct = 65 + ((i + Math.min(0.98, ratio)) / suggestions.length) * 33;
+        void setProgressOnly(Math.min(98, Math.round(pct * 10) / 10));
+      });
+    } catch (err) {
+      await push(`   ⚠️  browser recorder failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
 
-    const renderPlans = [
-      {
-        label: "vertical render",
-        args: buildVerticalArgs("copy", cropFilter),
-        timeoutMs: Math.max(360_000, Math.ceil(durationSec * 10_000)),
-      },
-      {
-        label: "compatibility render",
-        args: buildVerticalArgs("aac", compactFilter),
-        timeoutMs: Math.max(420_000, Math.ceil(durationSec * 12_000)),
-      },
-      {
-        label: "instant safe cut",
-        args: buildFastCutArgs(),
-        timeoutMs: 120_000,
-      },
-    ];
-
-    // Per-clip auto-retry ladder: vertical first, smaller compatibility render
-    // second, and finally a no-reencode cut so the pipeline still finishes.
-    let exitCode = -1;
-    let usedPlan = renderPlans[0].label;
-    for (let attempt = 0; attempt < renderPlans.length; attempt++) {
-      const plan = renderPlans[attempt];
-      usedPlan = plan.label;
+    if (!blob) {
+      usedPlan = "instant safe cut";
+      await push(`   ↻ clip ${i + 1} retrying with instant safe cut…`);
+      let exitCode = -1;
       try {
-        exitCode = await execWithProgress(ff, plan.args, plan.timeoutMs, durationSec, (ratio) => {
+        exitCode = await execWithProgress(ff, buildFastCutArgs(), 120_000, durationSec, (ratio) => {
           const pct = 65 + ((i + Math.min(0.98, ratio)) / suggestions.length) * 33;
           void setProgressOnly(Math.min(98, Math.round(pct * 10) / 10));
         });
       } catch (err) {
-        exitCode = -1;
-        await push(`   ⚠️  clip ${i + 1} ${plan.label} failed: ${err instanceof Error ? err.message : String(err)}`);
+        await push(`   ⚠️  instant safe cut failed: ${err instanceof Error ? err.message : String(err)}`);
       }
-      if (exitCode === 0) break;
-      if (attempt < renderPlans.length - 1) {
-        await push(`   ↻ clip ${i + 1} retrying with ${renderPlans[attempt + 1].label}…`);
-        try { await ff.deleteFile(outName); } catch { /* ignore */ }
+      if (exitCode !== 0) {
+        throw new Error(`Clip ${i + 1} render timed out or failed`);
       }
-    }
-    if (exitCode !== 0) {
-      throw new Error(`Clip ${i + 1} render failed after ${renderPlans.length} attempts`);
+      const fileData = (await ff.readFile(outName)) as Uint8Array;
+      blob = new Blob([fileData as BlobPart], { type: "video/mp4" });
     }
 
-
-    const fileData = (await ff.readFile(outName)) as Uint8Array;
-    const blob = new Blob([fileData as BlobPart], { type: "video/mp4" });
-    const clipKey = `${userId}/${videoId}/clip_${i}.mp4`;
+    const clipKey = `${userId}/${videoId}/clip_${i}.${getClipExtension(blob.type)}`;
     const { error: clipUpErr } = await supabase.storage
       .from("clips")
-      .upload(clipKey, blob, { upsert: true, contentType: "video/mp4" });
+      .upload(clipKey, blob, { upsert: true, contentType: blob.type || "video/mp4" });
     if (clipUpErr) throw new Error(`Clip upload failed: ${clipUpErr.message}`);
 
     const { data: signed } = await supabase.storage
