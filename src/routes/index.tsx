@@ -28,8 +28,29 @@ function Dashboard() {
   const [video, setVideo] = useState<VideoRow | null>(null);
   const [clips, setClips] = useState<ClipRow[]>([]);
   const [preStage, setPreStage] = useState<PreStage>({ kind: "idle" });
+  const notifiedFailureRef = useRef<string | null>(null);
 
   useEffect(() => {
+    if (!video) return;
+    if (video.status === "failed" && notifiedFailureRef.current !== video.id) {
+      notifiedFailureRef.current = video.id;
+      const stage = video.stage ?? "pipeline";
+      const stageLabel =
+        stage === "transcribing"
+          ? "Transcription failed"
+          : stage === "rendering"
+          ? "Rendering failed"
+          : stage === "downloading"
+          ? "Upload failed"
+          : "Pipeline failed";
+      toast.error(stageLabel, {
+        description: video.error ?? "Something went wrong. Check the terminal log for details.",
+      });
+    }
+    if (video.status === "completed" && notifiedFailureRef.current === video.id) {
+      notifiedFailureRef.current = null;
+    }
+  }, [video]);
     const savedVideoId = window.localStorage.getItem("autocliper-active-video-id");
     if (savedVideoId) setActiveVideoId(savedVideoId);
   }, []);
