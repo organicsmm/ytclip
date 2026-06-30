@@ -52,6 +52,23 @@ async function downloadClip(clip: ClipRow): Promise<void> {
     const res = await fetch(signed.signedUrl);
     if (!res.ok) throw new Error(`Download failed (${res.status})`);
     const blob = await res.blob();
+
+    // Verify audio stream is present before handing the file to the user.
+    const probe = await probeAudio(blob);
+    if (!probe.hasAudio) {
+      toast.warning("Clip has no audio", {
+        description:
+          "The downloaded file appears to be silent (no audio stream detected). Try re-rendering the clip.",
+        duration: 8000,
+      });
+    } else {
+      toast.success("Audio verified", {
+        description: probe.codec
+          ? `Audio stream OK (${probe.codec}).`
+          : "Audio stream OK.",
+      });
+    }
+
     const objectUrl = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = objectUrl;
@@ -68,6 +85,7 @@ async function downloadClip(clip: ClipRow): Promise<void> {
     });
   }
 }
+
 
 function getDownloadExtension(mimeType: string, path: string): "mp4" | "webm" {
   const type = mimeType.toLowerCase();
