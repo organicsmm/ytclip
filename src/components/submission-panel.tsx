@@ -50,7 +50,7 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
       throw new Error(meta.error || `Resolve failed (${resolveRes.status})`);
     }
     const title = meta.title || "YouTube video";
-    setYtStatus(`Downloading "${meta.title}"…`);
+    setYtStatus(`Downloading "${title}"…`);
     onPreStageChange?.({ kind: "downloading", loaded: 0, total: 0 });
     const proxied = `/api/public/yt-proxy?u=${encodeURIComponent(meta.streamUrl)}`;
     const dl = await fetch(proxied);
