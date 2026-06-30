@@ -26,18 +26,15 @@ async function getFFmpeg(onLog?: (msg: string) => void): Promise<FFmpeg> {
   const ff = new FFmpeg();
   ff.on("log", ({ message }) => onLog?.(message));
   const cdns = [
-    "https://cdn.jsdelivr.net/npm/@ffmpeg",
-    "https://unpkg.com/@ffmpeg",
+    "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm",
+    "https://unpkg.com/@ffmpeg/core@0.12.10/dist/esm",
   ];
   let lastErr: unknown;
-  for (const cdn of cdns) {
+  for (const base of cdns) {
     try {
-      const coreBase = `${cdn}/core@0.12.10/dist/umd`;
-      const ffmpegBase = `${cdn}/ffmpeg@0.12.10/dist/umd`;
       await ff.load({
-        coreURL: await toBlobURL(`${coreBase}/ffmpeg-core.js`, "text/javascript"),
-        wasmURL: await toBlobURL(`${coreBase}/ffmpeg-core.wasm`, "application/wasm"),
-        classWorkerURL: await toBlobURL(`${ffmpegBase}/814.ffmpeg.js`, "text/javascript"),
+        coreURL: await toBlobURL(`${base}/ffmpeg-core.js`, "text/javascript"),
+        wasmURL: await toBlobURL(`${base}/ffmpeg-core.wasm`, "application/wasm"),
       });
       lastErr = null;
       break;
