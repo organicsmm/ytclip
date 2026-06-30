@@ -173,6 +173,8 @@ def download(video_id: str) -> dict:
     }
     if cookies_path:
         ydl_opts["cookiefile"] = cookies_path
+    if proxy_url:
+        ydl_opts["proxy"] = proxy_url
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(
