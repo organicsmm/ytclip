@@ -83,13 +83,13 @@ export const Route = createFileRoute("/api/public/yt-resolve")({
           ];
 
           // Prefer progressive mp4 (has both audio + video) — these play directly in <video>
-          const progressive = all
+          const progressive = (data.formats ?? [])
             .filter(
               (f) =>
                 f.url &&
                 (f.mimeType || "").toLowerCase().includes("video/mp4") &&
-                f.hasAudio !== false &&
-                f.hasVideo !== false,
+                f.hasAudio === true &&
+                f.hasVideo === true,
             )
             .sort((a, b) => (b.height ?? 0) - (a.height ?? 0));
 
