@@ -318,6 +318,8 @@ export const Route = createFileRoute("/api/public/yt-resolve")({
             source: "apify",
           });
         } catch (e) {
+          const modal = await resolveWithModal(videoId, cleanYtUrl);
+          if (modal) return Response.json(modal);
           const fallback = await resolveWithRapidApi(videoId, cleanYtUrl, await fetchTitle(cleanYtUrl));
           if (fallback) return Response.json(fallback);
           const msg = e instanceof Error ? e.message : "Failed to resolve";
