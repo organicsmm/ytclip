@@ -23,8 +23,13 @@ import {
   firstError,
 } from "@/lib/validation";
 
+interface JobStartPayload {
+  videoId: string;
+  restart: () => Promise<string>;
+}
+
 interface Props {
-  onJobStarted: (videoId: string) => void;
+  onJobStarted: (payload: JobStartPayload) => void;
   onPreStageChange?: (s: PreStage) => void;
   disabled?: boolean;
 }
