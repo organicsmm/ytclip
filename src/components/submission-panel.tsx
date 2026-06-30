@@ -23,8 +23,13 @@ import {
   firstError,
 } from "@/lib/validation";
 
+interface JobStartPayload {
+  videoId: string;
+  restart: () => Promise<string>;
+}
+
 interface Props {
-  onJobStarted: (videoId: string) => void;
+  onJobStarted: (payload: JobStartPayload) => void;
   onPreStageChange?: (s: PreStage) => void;
   disabled?: boolean;
 }
@@ -125,7 +130,7 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
         }
       }
 
-      const videoId = await startRealPipeline({
+      const startParams = {
         file: sourceFile!,
         title,
         clipCount,
@@ -134,9 +139,13 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
           subtitle_style: subStyle,
           face_tracking: faceTracking,
         },
-      });
+      };
+      const videoId = await startRealPipeline(startParams);
 
-      onJobStarted(videoId);
+      onJobStarted({
+        videoId,
+        restart: () => startRealPipeline(startParams),
+      });
       toast.success("Pipeline started", {
         description: "ffmpeg.wasm is rendering your clips locally.",
       });
