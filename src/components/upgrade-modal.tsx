@@ -35,6 +35,38 @@ const PLANS = [
 ];
 
 export function UpgradeModal({ open, onOpenChange, used, monthlyLimit, plan }: Props) {
+  const [loadingPlan, setLoadingPlan] = useState<PlanId | null>(null);
+  const queryClient = useQueryClient();
+
+  const handleUpgrade = async (target: PlanId) => {
+    setLoadingPlan(target);
+    try {
+      const result = await openCheckout({
+        plan: target,
+        onComplete: () => {
+          toast.success("Payment successful — welcome aboard!", {
+            description: "Your plan is updating; this may take a few seconds.",
+          });
+          onOpenChange(false);
+          // Webhook updates the subscriptions table; poll for a moment.
+          setTimeout(() => queryClient.invalidateQueries({ queryKey: ["quota"] }), 1500);
+          setTimeout(() => queryClient.invalidateQueries({ queryKey: ["quota"] }), 5000);
+        },
+        onClose: () => {
+          toast.message("Checkout closed", { description: "No charge was made." });
+        },
+      });
+      if (!result.ok) {
+        toast.error("Couldn't open checkout", { description: result.reason });
+      }
+    } catch (e) {
+      toast.error("Checkout failed", {
+        description: e instanceof Error ? e.message : "Unknown error",
+      });
+    } finally {
+      setLoadingPlan(null);
+    }
+  };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
