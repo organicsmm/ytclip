@@ -288,7 +288,19 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
             id="file"
             type="file"
             accept="video/*"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            onChange={(e) => {
+              const next = e.target.files?.[0] ?? null;
+              if (next) {
+                const parsed = videoFileSchema.safeParse(next);
+                if (!parsed.success) {
+                  toast.error(firstError(parsed.error));
+                  e.target.value = "";
+                  setFile(null);
+                  return;
+                }
+              }
+              setFile(next);
+            }}
             className="mt-2 h-12 cursor-pointer border-border bg-surface/60 file:mr-3 file:rounded-md file:border-0 file:bg-primary/20 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-foreground"
           />
         </TabsContent>
