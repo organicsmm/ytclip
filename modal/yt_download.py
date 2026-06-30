@@ -215,13 +215,20 @@ def web():
             return raw
         return None
 
+    def run_download(vid: str) -> dict:
+        try:
+            return download.remote(vid)
+        except Exception as exc:
+            detail = str(exc) or exc.__class__.__name__
+            raise HTTPException(status_code=502, detail=f"yt-dlp failed: {detail}") from exc
+
     @fastapi.get("/info")
     def info(url: str = Query(...), authorization: str | None = Header(default=None)):
         _require_bearer(authorization)
         vid = extract_id(url)
         if not vid:
             raise HTTPException(status_code=400, detail="invalid youtube url")
-        meta = download.remote(vid)
+        meta = run_download(vid)
         secret = os.environ["MODAL_AUTH_TOKEN"]
         expires = int(time.time()) + TTL_SECONDS
         sig = _sign(vid, expires, secret)
@@ -238,7 +245,7 @@ def web():
         vid = extract_id(url)
         if not vid:
             raise HTTPException(status_code=400, detail="invalid youtube url")
-        download.remote(vid)
+        run_download(vid)
         secret = os.environ["MODAL_AUTH_TOKEN"]
         expires = int(time.time()) + TTL_SECONDS
         sig = _sign(vid, expires, secret)
