@@ -18,46 +18,32 @@ function extractVideoId(input: string): string | null {
 }
 
 /**
- * Apify-based YouTube resolver using `pintostudio/youtube-downloader` actor.
- * Runs entirely on Apify's cloud — independent of dev/user machines.
- * Docs: https://apify.com/pintostudio/youtube-downloader
+ * Apify-based YouTube resolver using `api-ninja/youtube-video-downloader`.
+ * Returns YouTube's native `formats` (combined a/v) and `adaptiveFormats`.
+ * Runs on Apify's cloud — independent of dev/user machines.
  */
-// Output shape from epctex/youtube-video-downloader. Field names vary across
-// runs; we coerce defensively below.
-type ApifyItem = {
-  title?: string;
-  duration?: string | number;
-  durationSec?: number;
-  thumbnail?: string;
-  thumbnailUrl?: string;
-  videoUrl?: string;
-  downloadUrl?: string;
+type YtFormat = {
+  itag?: number;
   url?: string;
   mimeType?: string;
-  quality?: string;
+  width?: number;
   height?: number;
-  medias?: Array<{
-    url?: string;
-    quality?: string;
-    extension?: string;
-    type?: string;
-    is_audio?: boolean;
-    has_audio?: boolean;
-    height?: number;
-    width?: number;
-    mime_type?: string;
-  }>;
+  quality?: string;
+  qualityLabel?: string;
+  contentLength?: string;
+  approxDurationMs?: string;
+  audioQuality?: string;
 };
 
-function parseDuration(d: string | number | undefined): number {
-  if (typeof d === "number") return d;
-  if (!d) return 0;
-  const parts = d.split(":").map((p) => Number(p));
-  if (parts.some(isNaN)) return 0;
-  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-  if (parts.length === 2) return parts[0] * 60 + parts[1];
-  return parts[0] || 0;
-}
+type ApifyItem = {
+  status?: string;
+  id?: string;
+  title?: string;
+  lengthSeconds?: string | number;
+  thumbnail?: Array<{ url?: string }>;
+  formats?: YtFormat[];
+  adaptiveFormats?: YtFormat[];
+};
 
 export const Route = createFileRoute("/api/public/yt-resolve")({
   server: {
@@ -79,15 +65,11 @@ export const Route = createFileRoute("/api/public/yt-resolve")({
 
         try {
           const res = await fetch(
-            `https://api.apify.com/v2/acts/epctex~youtube-video-downloader/run-sync-get-dataset-items?token=${encodeURIComponent(apifyToken)}&timeout=180`,
+            `https://api.apify.com/v2/acts/api-ninja~youtube-video-downloader/run-sync-get-dataset-items?token=${encodeURIComponent(apifyToken)}&timeout=180`,
             {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                startUrls: [cleanYtUrl],
-                videoIds: [videoId],
-                quality: "720",
-              }),
+              body: JSON.stringify({ urls: [cleanYtUrl] }),
             },
           );
 
@@ -100,38 +82,39 @@ export const Route = createFileRoute("/api/public/yt-resolve")({
 
           const items = (await res.json()) as ApifyItem[];
           const item = items?.[0];
-          if (!item) {
-            return Response.json({ error: "Apify returned no items." });
+          if (!item || item.status !== "OK") {
+            return Response.json({
+              error: `Apify returned no playable item. Got: ${JSON.stringify(item ?? items).slice(0, 300)}`,
+            });
           }
 
-          // Try top-level URL first (epctex shape), then fall back to medias array.
-          const topUrl = item.downloadUrl || item.videoUrl || item.url;
-          const medias = item.medias ?? [];
-          // Prefer mp4 with audio+video, then highest height
-          const ranked = [...medias]
-            .filter((m) => m.url && !m.is_audio)
-            .sort((a, b) => {
-              const aHas = a.has_audio !== false ? 1 : 0;
-              const bHas = b.has_audio !== false ? 1 : 0;
-              if (aHas !== bHas) return bHas - aHas;
-              return (b.height ?? 0) - (a.height ?? 0);
-            });
-          const chosen = ranked[0];
-          const streamUrl = topUrl || chosen?.url;
-          if (!streamUrl) {
+          // Prefer combined audio+video mp4 (itag 18 = 360p, itag 22 = 720p).
+          // These play in the browser without muxing, so ffmpeg.wasm input is one file.
+          const combined = (item.formats ?? []).filter(
+            (f) => f.url && f.mimeType?.startsWith("video/mp4") && f.audioQuality,
+          );
+          combined.sort((a, b) => (b.height ?? 0) - (a.height ?? 0));
+          const chosen = combined[0] ?? item.formats?.[0];
+
+          if (!chosen?.url) {
             return Response.json({
-              error: `No playable stream URL from Apify. Got: ${JSON.stringify(item).slice(0, 300)}`,
+              error: "No combined audio+video mp4 stream found in Apify response.",
             });
           }
+
+          const durationSec =
+            typeof item.lengthSeconds === "string"
+              ? Number(item.lengthSeconds) || 0
+              : item.lengthSeconds ?? 0;
 
           return Response.json({
             videoId,
             title: item.title ?? "YouTube video",
-            durationSec: parseDuration(item.durationSec ?? item.duration),
-            streamUrl,
-            mimeType: chosen?.mime_type?.split(";")[0] || item.mimeType?.split(";")[0] || "video/mp4",
-            quality: chosen?.quality || item.quality || `${chosen?.height ?? item.height ?? "?"}p`,
-            thumbnail: item.thumbnail || item.thumbnailUrl,
+            durationSec,
+            streamUrl: chosen.url,
+            mimeType: chosen.mimeType?.split(";")[0] || "video/mp4",
+            quality: chosen.qualityLabel || chosen.quality || `${chosen.height ?? "?"}p`,
+            thumbnail: item.thumbnail?.[item.thumbnail.length - 1]?.url,
           });
         } catch (e) {
           const msg = e instanceof Error ? e.message : "Failed to resolve";
