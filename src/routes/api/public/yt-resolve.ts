@@ -39,12 +39,9 @@ export const Route = createFileRoute("/api/public/yt-resolve")({
           const status = info.playability_status?.status;
           if (status && status !== "OK") {
             const reason = info.playability_status?.reason ?? status;
-            return Response.json(
-              {
-                error: `YouTube blocked extraction (${status}: ${reason}). All free public resolvers are currently bot-walled. Please download the MP4 manually and use Local Upload.`,
-              },
-              { status: 502 },
-            );
+            return Response.json({
+              error: `YouTube blocked extraction (${status}: ${reason}). All free public resolvers are currently bot-walled. Please download the MP4 manually and use Local Upload.`,
+            });
           }
 
           // Try progressive (audio+video) first — modern videos rarely have these above 360p
