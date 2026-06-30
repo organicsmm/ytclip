@@ -25,11 +25,19 @@ async function getFFmpeg(onLog?: (msg: string) => void): Promise<FFmpeg> {
   if (ffmpegSingleton) return ffmpegSingleton;
   const ff = new FFmpeg();
   ff.on("log", ({ message }) => onLog?.(message));
-  const baseURL = "https://unpkg.com/@ffmpeg/core@0.12.10/dist/umd";
-  await ff.load({
-    coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, "text/javascript"),
-    wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, "application/wasm"),
-  });
+  const baseURL = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd";
+  try {
+    await ff.load({
+      coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, "text/javascript"),
+      wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, "application/wasm"),
+    });
+  } catch (e) {
+    const fallback = "https://unpkg.com/@ffmpeg/core@0.12.10/dist/umd";
+    await ff.load({
+      coreURL: await toBlobURL(`${fallback}/ffmpeg-core.js`, "text/javascript"),
+      wasmURL: await toBlobURL(`${fallback}/ffmpeg-core.wasm`, "application/wasm"),
+    });
+  }
   ffmpegSingleton = ff;
   return ff;
 }
