@@ -66,7 +66,7 @@ export const Route = createFileRoute("/api/public/yt-resolve")({
 
         try {
           const res = await fetch(
-            `https://social-media-video-downloader.p.rapidapi.com/youtube/v3/video/details?videoId=${encodeURIComponent(videoId)}&urlAccess=normal&renderableFormats=720p%2C360p%2Chighres&getTranscript=false`,
+            `https://social-media-video-downloader.p.rapidapi.com/youtube/v3/video/details?videoId=${encodeURIComponent(videoId)}&urlAccess=proxied&renderableFormats=720p&getTranscript=false`,
             {
               headers: {
                 "x-rapidapi-key": apiKey,
