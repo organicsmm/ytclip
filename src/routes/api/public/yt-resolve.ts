@@ -44,7 +44,28 @@ type ResolvePayload = {
   mimeType: string;
   quality: string;
   thumbnail?: string;
-  source: "modal";
+  source: "modal" | "rapidapi";
+};
+
+type RapidStream = {
+  url?: string;
+  metadata?: {
+    height?: number;
+    has_audio?: boolean;
+    has_video?: boolean;
+    mime_type?: string;
+    bitrate?: number;
+  };
+};
+
+type RapidApiDetails = {
+  title?: string;
+  duration?: number | string;
+  durationSec?: number | string;
+  duration_seconds?: number | string;
+  thumbnail?: string;
+  thumbnails?: Array<{ url?: string }>;
+  contents?: Array<{ videos?: RapidStream[]; audios?: RapidStream[] }>;
 };
 
 async function hmacHex(value: string, secret: string): Promise<string> {
@@ -128,6 +149,80 @@ async function resolveWithModal(
   }
 }
 
+function pickRapidVideo(videos: RapidStream[]): RapidStream | undefined {
+  return [...videos]
+    .filter((v) => (v.metadata?.mime_type || "").startsWith("video/mp4"))
+    .sort((a, b) => {
+      const ah = a.metadata?.height ?? 0;
+      const bh = b.metadata?.height ?? 0;
+      const aPenalty = ah > 720 ? 1 : 0;
+      const bPenalty = bh > 720 ? 1 : 0;
+      if (aPenalty !== bPenalty) return aPenalty - bPenalty;
+      return bh - ah;
+    })[0] ?? videos[0];
+}
+
+function pickRapidAudio(audios: RapidStream[]): RapidStream | undefined {
+  return [...audios]
+    .filter((a) => (a.metadata?.mime_type || "").startsWith("audio/mp4"))
+    .sort((a, b) => (b.metadata?.bitrate ?? 0) - (a.metadata?.bitrate ?? 0))[0] ?? audios[0];
+}
+
+async function resolveWithRapidApi(
+  videoId: string,
+): Promise<{ ok: ResolvePayload } | { err: string; status?: number } | null> {
+  const apiKey = process.env.RAPIDAPI_KEY;
+  if (!apiKey) return null;
+
+  try {
+    const res = await fetch(
+      `https://social-media-video-downloader.p.rapidapi.com/youtube/v3/video/details?videoId=${encodeURIComponent(videoId)}&urlAccess=normal&getTranscript=false`,
+      {
+        headers: {
+          "x-rapidapi-key": apiKey,
+          "x-rapidapi-host": "social-media-video-downloader.p.rapidapi.com",
+        },
+      },
+    );
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      console.error("[rapidapi] details failed", res.status, body.slice(0, 500));
+      return { err: `RapidAPI ${res.status}: ${body.slice(0, 160) || res.statusText}`, status: 502 };
+    }
+
+    const data = (await res.json()) as RapidApiDetails;
+    const videos = (data.contents ?? []).flatMap((c) => c.videos ?? []);
+    const audios = (data.contents ?? []).flatMap((c) => c.audios ?? []);
+    const video = pickRapidVideo(videos);
+    const audio = pickRapidAudio(audios);
+
+    if (!video?.url) return { err: "RapidAPI returned no playable video stream", status: 502 };
+
+    const durationRaw = data.durationSec ?? data.duration_seconds ?? data.duration;
+    const durationSec = typeof durationRaw === "number" ? durationRaw : Number(durationRaw ?? 0) || 0;
+    const needsAudio = video.metadata?.has_audio === false && !!audio?.url;
+    const height = video.metadata?.height;
+
+    return {
+      ok: {
+        videoId,
+        title: data.title ?? "YouTube video",
+        durationSec,
+        streamUrl: `/api/public/yt-proxy?id=${encodeURIComponent(videoId)}&kind=video`,
+        audioUrl: needsAudio ? `/api/public/yt-proxy?id=${encodeURIComponent(videoId)}&kind=audio` : undefined,
+        mimeType: video.metadata?.mime_type ?? "video/mp4",
+        quality: height ? `${height}p` : "720p",
+        thumbnail: data.thumbnail ?? data.thumbnails?.[0]?.url,
+        source: "rapidapi",
+      },
+    };
+  } catch (e) {
+    console.error("[rapidapi] fetch threw", e);
+    return { err: `RapidAPI network error: ${(e as Error).message}`, status: 502 };
+  }
+}
+
 export const Route = createFileRoute("/api/public/yt-resolve")({
   server: {
     handlers: {
@@ -174,25 +269,30 @@ export const Route = createFileRoute("/api/public/yt-resolve")({
         }
 
         const cleanYtUrlEarly = `https://www.youtube.com/watch?v=${videoId}`;
-        // Modal-only resolver. Apify/RapidAPI fallbacks can resolve successfully
-        // but return YouTube tunnel URLs that are CORS/IP blocked in browsers,
-        // causing the visible "Failed to fetch" error.
         const modalResult = await resolveWithModal(videoId, cleanYtUrlEarly);
         if (modalResult && "ok" in modalResult) return Response.json(modalResult.ok);
+
+        const rapidResult = await resolveWithRapidApi(videoId);
+        if (rapidResult && "ok" in rapidResult) return Response.json(rapidResult.ok);
+
         const modalErr = modalResult && "err" in modalResult ? modalResult.err : "Modal not configured";
-        const upstreamStatus = modalResult && "err" in modalResult ? modalResult.status ?? 502 : 503;
+        const rapidErr = rapidResult && "err" in rapidResult ? rapidResult.err : "RapidAPI not configured";
+        const upstreamStatus =
+          (rapidResult && "err" in rapidResult ? rapidResult.status : undefined) ??
+          (modalResult && "err" in modalResult ? modalResult.status : undefined) ??
+          503;
 
         // YouTube/Modal failures are expected operational failures, not app crashes.
         // Return 200 so the UI can render its existing fallback/workaround panel instead
         // of the preview treating the API response as an unhandled 5xx runtime error.
         return Response.json(
           {
-            error: modalErr,
+            error: `${modalErr}; ${rapidErr}`,
             setupRequired: true,
             setupMessage:
-              "Modal secret yt-auth must contain both MODAL_AUTH_TOKEN and YT_COOKIES_TXT. Recreate the secret, then redeploy modal/yt_download.py.",
+              "Modal failed and RapidAPI fallback also failed. Check MODAL_AUTH_TOKEN/MODAL_YT_URL or RAPIDAPI_KEY, then retry.",
             upstreamStatus,
-            source: "modal",
+            source: "modal+rapidapi",
             retryable: true,
           },
           { status: 200, headers: { "Cache-Control": "no-store" } },
