@@ -1,6 +1,10 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Check, Sparkles, Zap } from "lucide-react";
+import { Check, Sparkles, Zap, Loader2 } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
+import { openCheckout, type PlanId } from "@/lib/paddle";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface Props {
   open: boolean;
@@ -31,6 +35,38 @@ const PLANS = [
 ];
 
 export function UpgradeModal({ open, onOpenChange, used, monthlyLimit, plan }: Props) {
+  const [loadingPlan, setLoadingPlan] = useState<PlanId | null>(null);
+  const queryClient = useQueryClient();
+
+  const handleUpgrade = async (target: PlanId) => {
+    setLoadingPlan(target);
+    try {
+      const result = await openCheckout({
+        plan: target,
+        onComplete: () => {
+          toast.success("Payment successful — welcome aboard!", {
+            description: "Your plan is updating; this may take a few seconds.",
+          });
+          onOpenChange(false);
+          // Webhook updates the subscriptions table; poll for a moment.
+          setTimeout(() => queryClient.invalidateQueries({ queryKey: ["quota"] }), 1500);
+          setTimeout(() => queryClient.invalidateQueries({ queryKey: ["quota"] }), 5000);
+        },
+        onClose: () => {
+          toast.message("Checkout closed", { description: "No charge was made." });
+        },
+      });
+      if (!result.ok) {
+        toast.error("Couldn't open checkout", { description: result.reason });
+      }
+    } catch (e) {
+      toast.error("Checkout failed", {
+        description: e instanceof Error ? e.message : "Unknown error",
+      });
+    } finally {
+      setLoadingPlan(null);
+    }
+  };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
@@ -78,16 +114,21 @@ export function UpgradeModal({ open, onOpenChange, used, monthlyLimit, plan }: P
                   ))}
                 </ul>
                 <Button
-                  disabled={isCurrent}
+                  disabled={isCurrent || loadingPlan !== null}
                   className="btn-glow mt-5 h-11 w-full rounded-lg text-xs font-semibold uppercase tracking-[0.2em]"
-                  onClick={() => {
-                    // Paddle checkout will be wired here once test mode is enabled.
-                    window.alert(
-                      "Checkout coming soon — Paddle test mode needs to be enabled from chat.",
-                    );
-                  }}
+                  onClick={() => handleUpgrade(p.id)}
                 >
-                  {isCurrent ? "Current plan" : `Upgrade to ${p.name}`}
+                  {loadingPlan === p.id ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Opening…
+                    </>
+                  ) : isCurrent ? (
+                    "Current plan"
+                  ) : plan === "starter" && p.id === "pro" ? (
+                    "Upgrade to Pro"
+                  ) : (
+                    `Upgrade to ${p.name}`
+                  )}
                 </Button>
               </div>
             );
