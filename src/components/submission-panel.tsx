@@ -72,28 +72,48 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
     ): Promise<Blob> => {
       setYtStatus(`Downloading ${label} for "${title}"…`);
       onPreStageChange?.({ kind: "downloading", loaded: 0, total: 0 });
-      const dl = await fetch(url);
-      if (!dl.ok || !dl.body) throw new Error(`Download failed (${dl.status})`);
-      const total = Number(dl.headers.get("content-length") ?? 0);
-      const reader = dl.body.getReader();
-      const chunks: Uint8Array[] = [];
-      let loaded = 0;
-      let lastTick = 0;
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        chunks.push(value);
-        loaded += value.byteLength;
-        const now = Date.now();
-        if (now - lastTick > 150) {
-          lastTick = now;
-          const pctTxt = total ? ` (${Math.round((loaded / total) * 100)}%)` : "";
-          setYtStatus(`Downloading ${label} for "${title}"…${pctTxt}`);
-          onPreStageChange?.({ kind: "downloading", loaded, total });
+      const controller = new AbortController();
+      let stallTimer: ReturnType<typeof setTimeout> | undefined;
+      const armStallTimer = () => {
+        if (stallTimer) clearTimeout(stallTimer);
+        stallTimer = setTimeout(() => controller.abort(), 30000);
+      };
+      try {
+        armStallTimer();
+        const dl = await fetch(url, { signal: controller.signal });
+        if (!dl.ok || !dl.body) {
+          const body = await dl.text().catch(() => "");
+          throw new Error(`Download failed (${dl.status})${body ? `: ${body.slice(0, 160)}` : ""}`);
         }
+        const total = Number(dl.headers.get("content-length") ?? 0);
+        const reader = dl.body.getReader();
+        const chunks: Uint8Array[] = [];
+        let loaded = 0;
+        let lastTick = 0;
+        while (true) {
+          armStallTimer();
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(value);
+          loaded += value.byteLength;
+          const now = Date.now();
+          if (now - lastTick > 150) {
+            lastTick = now;
+            const pctTxt = total ? ` (${Math.round((loaded / total) * 100)}%)` : "";
+            setYtStatus(`Downloading ${label} for "${title}"…${pctTxt}`);
+            onPreStageChange?.({ kind: "downloading", loaded, total });
+          }
+        }
+        onPreStageChange?.({ kind: "downloading", loaded, total });
+        return new Blob(chunks as BlobPart[]);
+      } catch (e) {
+        if (controller.signal.aborted) {
+          throw new Error(`Download stalled for 30s while fetching ${label}. The upstream YouTube stream/proxy is not responding.`);
+        }
+        throw e;
+      } finally {
+        if (stallTimer) clearTimeout(stallTimer);
       }
-      onPreStageChange?.({ kind: "downloading", loaded, total });
-      return new Blob(chunks as BlobPart[]);
     };
 
     let blob: Blob;
