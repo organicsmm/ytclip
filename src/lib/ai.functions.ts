@@ -22,7 +22,7 @@ export const generateClipSuggestions = createServerFn({ method: "POST" })
 
     const count = Math.min(Math.max(data.count, 1), 8);
     const minLen = 20;
-    const maxLen = 55;
+    const maxLen = 25;
 
     const system = `You are a viral short-form video editor. Given a long-form video's title and total duration in seconds, output ${count} non-overlapping clip candidates that would perform on TikTok/Reels/Shorts. Each clip is ${minLen}-${maxLen}s. Return STRICT JSON only.`;
     const user = `Video title: "${data.title}"
@@ -69,13 +69,19 @@ Rules:
       throw new Error("AI returned non-JSON content");
     }
 
-    const clips = (parsed.clips ?? []).filter(
-      (c) =>
-        typeof c.start_time === "number" &&
-        typeof c.end_time === "number" &&
-        c.end_time > c.start_time &&
-        c.end_time <= data.durationSec,
-    );
+    const clips = (parsed.clips ?? [])
+      .filter(
+        (c) =>
+          typeof c.start_time === "number" &&
+          typeof c.end_time === "number" &&
+          c.end_time > c.start_time &&
+          c.end_time <= data.durationSec,
+      )
+      .map((c) => ({
+        ...c,
+        end_time: Math.min(c.end_time, c.start_time + maxLen, data.durationSec),
+      }))
+      .filter((c) => c.end_time - c.start_time >= minLen);
 
     if (clips.length === 0) {
       // Fallback: evenly spaced 40s clips
@@ -83,7 +89,7 @@ Rules:
       const slot = Math.max(40, Math.floor(data.durationSec / (count + 1)));
       for (let i = 0; i < count; i++) {
         const start = Math.floor(((i + 1) * data.durationSec) / (count + 2));
-        const end = Math.min(data.durationSec, start + Math.min(slot, 50));
+        const end = Math.min(data.durationSec, start + Math.min(slot, maxLen));
         if (end - start < minLen) continue;
         fallback.push({
           title: `Highlight ${i + 1}`,
