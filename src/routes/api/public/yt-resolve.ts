@@ -266,7 +266,11 @@ export const Route = createFileRoute("/api/public/yt-resolve")({
             ),
           ]).then(([titleResult, apifyResult]) => [apifyResult, titleResult] as const);
 
-          const rapidFallback = () => resolveWithRapidApi(videoId, cleanYtUrl, title);
+          const rapidFallback = async () => {
+            const modal = await resolveWithModal(videoId, cleanYtUrl);
+            if (modal) return modal;
+            return resolveWithRapidApi(videoId, cleanYtUrl, title);
+          };
 
           if (!res.ok) {
             const fallback = await rapidFallback();
