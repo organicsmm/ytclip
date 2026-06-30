@@ -23,12 +23,20 @@ export const Route = createFileRoute("/")({
   component: Dashboard,
 });
 
+const STALL_MS = 90_000;
+const MAX_AUTO_RETRIES = 2;
+
 function Dashboard() {
   const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
   const [video, setVideo] = useState<VideoRow | null>(null);
   const [clips, setClips] = useState<ClipRow[]>([]);
   const [preStage, setPreStage] = useState<PreStage>({ kind: "idle" });
   const notifiedFailureRef = useRef<string | null>(null);
+  const restartRef = useRef<(() => Promise<string>) | null>(null);
+  const retryCountRef = useRef(0);
+  const retryingRef = useRef(false);
+  // Track last observed progress per video to detect stalls
+  const stallTrackerRef = useRef<{ videoId: string; progress: number; stage: string; since: number } | null>(null);
 
   useEffect(() => {
     if (!video) return;
@@ -50,6 +58,77 @@ function Dashboard() {
     if (video.status === "completed" && notifiedFailureRef.current === video.id) {
       notifiedFailureRef.current = null;
     }
+  }, [video]);
+
+  // Auto-retry: if progress is unchanged for STALL_MS while processing, restart.
+  useEffect(() => {
+    if (!video) return;
+    if (video.status !== "processing") {
+      stallTrackerRef.current = null;
+      return;
+    }
+    const tracker = stallTrackerRef.current;
+    const now = Date.now();
+    if (!tracker || tracker.videoId !== video.id) {
+      stallTrackerRef.current = { videoId: video.id, progress: video.progress, stage: video.stage, since: now };
+      return;
+    }
+    if (tracker.progress !== video.progress || tracker.stage !== video.stage) {
+      stallTrackerRef.current = { videoId: video.id, progress: video.progress, stage: video.stage, since: now };
+      return;
+    }
+
+    const check = window.setInterval(async () => {
+      const t = stallTrackerRef.current;
+      if (!t || t.videoId !== video.id) return;
+      if (Date.now() - t.since < STALL_MS) return;
+      if (retryingRef.current) return;
+
+      // Stalled. Try auto-retry if we can.
+      window.clearInterval(check);
+      const restart = restartRef.current;
+      if (!restart || retryCountRef.current >= MAX_AUTO_RETRIES) {
+        const msg = !restart
+          ? "Pipeline stalled and the source file is no longer in memory. Please start it again."
+          : `Pipeline stalled after ${MAX_AUTO_RETRIES} auto-retries. Please start it again.`;
+        await supabase
+          .from("videos")
+          .update({ status: "failed", stage: "failed", error: msg })
+          .eq("id", video.id);
+        return;
+      }
+
+      retryingRef.current = true;
+      retryCountRef.current += 1;
+      const attempt = retryCountRef.current;
+      toast.warning(`Pipeline stalled at ${Math.round(video.progress)}% · auto-retry ${attempt}/${MAX_AUTO_RETRIES}`);
+      try {
+        await supabase
+          .from("videos")
+          .update({
+            status: "failed",
+            stage: "failed",
+            error: `Stalled at ${Math.round(video.progress)}% — auto-retrying (${attempt}/${MAX_AUTO_RETRIES})`,
+          })
+          .eq("id", video.id);
+
+        const newVideoId = await restart();
+        window.localStorage.setItem("autocliper-active-video-id", newVideoId);
+        setClips([]);
+        setVideo(null);
+        setPreStage({ kind: "idle" });
+        stallTrackerRef.current = null;
+        setActiveVideoId(newVideoId);
+      } catch (e) {
+        toast.error("Auto-retry failed", {
+          description: e instanceof Error ? e.message : "Unknown error",
+        });
+      } finally {
+        retryingRef.current = false;
+      }
+    }, 5_000);
+
+    return () => window.clearInterval(check);
   }, [video]);
 
   useEffect(() => {
@@ -123,11 +202,15 @@ function Dashboard() {
     };
   }, [activeVideoId]);
 
-  const handleJobStarted = (videoId: string) => {
+  const handleJobStarted = ({ videoId, restart }: { videoId: string; restart: () => Promise<string> }) => {
     window.localStorage.setItem("autocliper-active-video-id", videoId);
     setClips([]);
     setVideo(null);
     setPreStage({ kind: "idle" });
+    restartRef.current = restart;
+    retryCountRef.current = 0;
+    retryingRef.current = false;
+    stallTrackerRef.current = null;
     setActiveVideoId(videoId);
   };
 
