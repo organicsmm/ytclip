@@ -22,10 +22,20 @@ function extractVideoId(input: string): string | null {
  * Runs entirely on Apify's cloud — independent of dev/user machines.
  * Docs: https://apify.com/pintostudio/youtube-downloader
  */
+// Output shape from epctex/youtube-video-downloader. Field names vary across
+// runs; we coerce defensively below.
 type ApifyItem = {
   title?: string;
   duration?: string | number;
+  durationSec?: number;
   thumbnail?: string;
+  thumbnailUrl?: string;
+  videoUrl?: string;
+  downloadUrl?: string;
+  url?: string;
+  mimeType?: string;
+  quality?: string;
+  height?: number;
   medias?: Array<{
     url?: string;
     quality?: string;
@@ -42,7 +52,6 @@ type ApifyItem = {
 function parseDuration(d: string | number | undefined): number {
   if (typeof d === "number") return d;
   if (!d) return 0;
-  // "HH:MM:SS" or "MM:SS"
   const parts = d.split(":").map((p) => Number(p));
   if (parts.some(isNaN)) return 0;
   if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
@@ -70,18 +79,22 @@ export const Route = createFileRoute("/api/public/yt-resolve")({
 
         try {
           const res = await fetch(
-            `https://api.apify.com/v2/acts/pintostudio~youtube-downloader/run-sync-get-dataset-items?token=${encodeURIComponent(apifyToken)}`,
+            `https://api.apify.com/v2/acts/epctex~youtube-video-downloader/run-sync-get-dataset-items?token=${encodeURIComponent(apifyToken)}&timeout=180`,
             {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ startUrls: [cleanYtUrl], videoUrl: cleanYtUrl }),
+              body: JSON.stringify({
+                startUrls: [cleanYtUrl],
+                videoIds: [videoId],
+                quality: "360p",
+              }),
             },
           );
 
           if (!res.ok) {
             const body = await res.text().catch(() => "");
             return Response.json({
-              error: `Apify call failed (${res.status}). ${body.slice(0, 200)}`,
+              error: `Apify call failed (${res.status}). ${body.slice(0, 300)}`,
             });
           }
 
@@ -91,6 +104,8 @@ export const Route = createFileRoute("/api/public/yt-resolve")({
             return Response.json({ error: "Apify returned no items." });
           }
 
+          // Try top-level URL first (epctex shape), then fall back to medias array.
+          const topUrl = item.downloadUrl || item.videoUrl || item.url;
           const medias = item.medias ?? [];
           // Prefer mp4 with audio+video, then highest height
           const ranked = [...medias]
