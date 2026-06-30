@@ -43,15 +43,29 @@ function createSupabaseClient() {
     throw new Error(message);
   }
 
+  // Dynamically load the 'ws' library for the Realtime client only on the server
+  const isServer = typeof window === 'undefined';
+  let wsLib = null;
+  if (isServer) {
+    try {
+      wsLib = eval("require('ws')");
+    } catch (e) {
+      console.warn('[Supabase] Failed to load ws library for SSR', e);
+    }
+  }
+
   return createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
     global: {
       fetch: createSupabaseFetch(SUPABASE_PUBLISHABLE_KEY),
     },
     auth: {
-      storage: typeof window !== 'undefined' ? localStorage : undefined,
+      storage: !isServer ? localStorage : undefined,
       persistSession: true,
       autoRefreshToken: true,
-    }
+    },
+    realtime: isServer && wsLib ? {
+      transport: wsLib
+    } : undefined
   });
 }
 
