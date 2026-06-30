@@ -182,6 +182,8 @@ function SectionHeader({
 function ClipCard({ clip }: { clip: ClipRow }) {
   const duration = clip.end_time - clip.start_time;
   const [downloading, setDownloading] = useState(false);
+  const [muted, setMuted] = useState(true);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const ready = !!clip.video_url;
 
   const handleDownload = async () => {
@@ -194,6 +196,18 @@ function ClipCard({ clip }: { clip: ClipRow }) {
     }
   };
 
+  const toggleMute = async () => {
+    const v = videoRef.current;
+    if (!v) return;
+    const next = !muted;
+    v.muted = next;
+    setMuted(next);
+    if (!next) {
+      v.volume = 1;
+      try { await v.play(); } catch { /* ignore */ }
+    }
+  };
+
   return (
     <article className="paper-card group flex flex-col overflow-hidden transition-colors hover:border-[color:var(--color-ink)]/30">
       <div
@@ -203,10 +217,14 @@ function ClipCard({ clip }: { clip: ClipRow }) {
       >
         {clip.video_url ? (
           <video
+            ref={videoRef}
             src={clip.video_url}
             controls
+            autoPlay
+            muted={muted}
+            loop
             playsInline
-            preload="metadata"
+            preload="auto"
             className="h-full w-full object-cover"
           />
         ) : (
@@ -217,9 +235,21 @@ function ClipCard({ clip }: { clip: ClipRow }) {
             </span>
           </div>
         )}
+        {ready && (
+          <button
+            type="button"
+            onClick={toggleMute}
+            aria-label={muted ? "Unmute clip" : "Mute clip"}
+            className="absolute left-3 top-3 inline-flex items-center gap-1.5 bg-[#0d0d0d]/85 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.18em] text-[#f5f3ee] hover:bg-[#0d0d0d]"
+          >
+            {muted ? <VolumeX className="h-3 w-3" /> : <Volume2 className="h-3 w-3" />}
+            {muted ? "Tap for sound" : "Sound on"}
+          </button>
+        )}
         <div className="absolute right-3 top-3 bg-[#0d0d0d] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.18em] text-[#f5f3ee]">
           Score {Math.round(clip.score)}
         </div>
+
         <div className="absolute bottom-3 left-3 inline-flex items-center gap-1.5 bg-[#0d0d0d]/85 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.18em] text-[#f5f3ee]">
           <Clock className="h-2.5 w-2.5" />
           {formatTime(clip.start_time)}–{formatTime(clip.end_time)} · {duration.toFixed(0)}s
