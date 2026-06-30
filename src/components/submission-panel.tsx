@@ -47,14 +47,16 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
       durationSec?: number;
       error?: string;
     };
-    if (!resolveRes.ok || meta.error || !meta.videoId) {
+    if (!resolveRes.ok || meta.error || !meta.streamUrl) {
       throw new Error(meta.error || `Resolve failed (${resolveRes.status})`);
     }
     const title = meta.title || "YouTube video";
     setYtStatus(`Downloading "${title}"…`);
     onPreStageChange?.({ kind: "downloading", loaded: 0, total: 0 });
-    const proxied = `/api/public/yt-proxy?id=${encodeURIComponent(meta.videoId)}`;
-    const dl = await fetch(proxied);
+    // Browser fetches the resolver's tunnel URL directly. The tunnel embeds the
+    // caller's IP into the googlevideo redirect, so it only works from the
+    // browser (not from our Cloudflare worker, which Google's CDN blocks).
+    const dl = await fetch(meta.streamUrl);
     if (!dl.ok || !dl.body) throw new Error(`Download failed (${dl.status})`);
 
     const total = Number(dl.headers.get("content-length") ?? 0);
