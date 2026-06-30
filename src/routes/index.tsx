@@ -26,6 +26,7 @@ function Dashboard() {
   const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
   const [video, setVideo] = useState<VideoRow | null>(null);
   const [clips, setClips] = useState<ClipRow[]>([]);
+  const [preStage, setPreStage] = useState<PreStage>({ kind: "idle" });
 
   useEffect(() => {
     const savedVideoId = window.localStorage.getItem("skate-active-video-id");
