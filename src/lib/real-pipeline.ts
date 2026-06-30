@@ -144,9 +144,13 @@ async function runPipeline(videoId: string, userId: string, params: StartParams)
   try {
     duration = await probeDuration(params.file, 6000);
   } catch {
-    await push("   browser couldn't read metadata, probing with ffprobe…", { progress: 38 });
+    await push("   browser couldn't read metadata, reading MP4 duration…", { progress: 38 });
   }
   if (!duration || !isFinite(duration)) {
+    duration = await probeMp4Duration(params.file);
+  }
+  if (!duration || !isFinite(duration)) {
+    await push("   MP4 duration unavailable, probing with ffprobe…", { progress: 40 });
     duration = await probeDurationWithFFmpeg(ff, inputName);
   }
   if (!duration || !isFinite(duration) || duration <= 0) {
@@ -326,6 +330,75 @@ function probeDuration(file: File, timeoutMs = 8000): Promise<number> {
     };
     v.src = url;
   });
+}
+
+async function probeMp4Duration(file: File): Promise<number> {
+  const ext = file.name.split(".").pop()?.toLowerCase();
+  if (!ext || !["mp4", "m4v", "mov"].includes(ext)) return 0;
+  const view = new DataView(await file.arrayBuffer());
+  const mvhd = findMp4Box(view, 0, view.byteLength, ["moov", "mvhd"]);
+  if (!mvhd) return 0;
+
+  const version = view.getUint8(mvhd.start);
+  if (version === 1) {
+    const timescale = view.getUint32(mvhd.start + 20);
+    const duration = readUint64(view, mvhd.start + 24);
+    return timescale ? duration / timescale : 0;
+  }
+
+  const timescale = view.getUint32(mvhd.start + 12);
+  const duration = view.getUint32(mvhd.start + 16);
+  return timescale ? duration / timescale : 0;
+}
+
+function findMp4Box(
+  view: DataView,
+  start: number,
+  end: number,
+  path: string[],
+): { start: number; end: number } | null {
+  let offset = start;
+  while (offset + 8 <= end) {
+    const size32 = view.getUint32(offset);
+    const type = readBoxType(view, offset + 4);
+    let header = 8;
+    let size = size32;
+
+    if (size32 === 1 && offset + 16 <= end) {
+      size = Number(readUint64(view, offset + 8));
+      header = 16;
+    } else if (size32 === 0) {
+      size = end - offset;
+    }
+
+    if (!size || size < header) break;
+    const boxEnd = Math.min(offset + size, end);
+    const payloadStart = offset + header;
+
+    if (type === path[0]) {
+      if (path.length === 1) return { start: payloadStart, end: boxEnd };
+      const found = findMp4Box(view, payloadStart, boxEnd, path.slice(1));
+      if (found) return found;
+    }
+
+    offset = boxEnd;
+  }
+  return null;
+}
+
+function readBoxType(view: DataView, offset: number): string {
+  return String.fromCharCode(
+    view.getUint8(offset),
+    view.getUint8(offset + 1),
+    view.getUint8(offset + 2),
+    view.getUint8(offset + 3),
+  );
+}
+
+function readUint64(view: DataView, offset: number): number {
+  const high = view.getUint32(offset);
+  const low = view.getUint32(offset + 4);
+  return high * 2 ** 32 + low;
 }
 
 async function probeDurationWithFFmpeg(ff: FFmpeg, inputName: string): Promise<number> {
