@@ -31,7 +31,6 @@ export const Route = createFileRoute("/api/public/yt-resolve")({
 
         try {
           const yt = await Innertube.create({
-            cache: new UniversalCache(false),
             generate_session_locally: true,
           });
           const info = await yt.getBasicInfo(videoId);
