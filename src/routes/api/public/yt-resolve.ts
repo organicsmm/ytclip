@@ -1,5 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Innertube } from "youtubei.js/cf-worker";
 
 function extractVideoId(input: string): string | null {
   try {
@@ -18,6 +17,28 @@ function extractVideoId(input: string): string | null {
   return null;
 }
 
+type YtApiFormat = {
+  url?: string;
+  mimeType?: string;
+  width?: number;
+  height?: number;
+  bitrate?: number;
+  contentLength?: string;
+  quality?: string;
+  qualityLabel?: string;
+  hasAudio?: boolean;
+  hasVideo?: boolean;
+};
+
+type YtApiResponse = {
+  title?: string;
+  lengthSeconds?: string | number;
+  thumbnail?: Array<{ url: string }>;
+  formats?: YtApiFormat[];
+  adaptiveFormats?: YtApiFormat[];
+  message?: string;
+};
+
 export const Route = createFileRoute("/api/public/yt-resolve")({
   server: {
     handlers: {
@@ -29,64 +50,85 @@ export const Route = createFileRoute("/api/public/yt-resolve")({
           return Response.json({ error: "Invalid YouTube URL" }, { status: 400 });
         }
 
-        try {
-          const yt = await Innertube.create({
-            generate_session_locally: true,
+        const apiKey = process.env.RAPIDAPI_KEY;
+        if (!apiKey) {
+          return Response.json({
+            error: "RAPIDAPI_KEY is not configured on the server.",
           });
-          const info = await yt.getBasicInfo(videoId);
+        }
 
-          // YouTube currently bot-blocks all anonymous extraction methods
-          const status = info.playability_status?.status;
-          if (status && status !== "OK") {
-            const reason = info.playability_status?.reason ?? status;
+        try {
+          const res = await fetch(
+            `https://yt-api.p.rapidapi.com/dl?id=${encodeURIComponent(videoId)}`,
+            {
+              headers: {
+                "X-RapidAPI-Key": apiKey,
+                "X-RapidAPI-Host": "yt-api.p.rapidapi.com",
+              },
+            },
+          );
+
+          if (!res.ok) {
+            const body = await res.text().catch(() => "");
             return Response.json({
-              error: `YouTube blocked extraction (${status}: ${reason}). All free public resolvers are currently bot-walled. Please download the MP4 manually and use Local Upload.`,
+              error: `yt-api request failed (${res.status}). ${body.slice(0, 200)}`,
             });
           }
 
-          // Try progressive (audio+video) first — modern videos rarely have these above 360p
-          let chosen: { url?: string; mime_type?: string; height?: number; decipher?: (p: unknown) => string | Promise<string> } | undefined;
-          try {
-            chosen = info.chooseFormat({
-              type: "video+audio",
-              quality: "best",
-              format: "mp4",
-            }) as typeof chosen;
-          } catch {
-            // Fallback: best video-only mp4 (browser will lack audio — acceptable)
-            const formats = info.streaming_data?.adaptive_formats ?? [];
-            chosen = formats
-              .filter((f) => (f.mime_type || "").toLowerCase().includes("video/mp4"))
-              .sort((a, b) => (b.height ?? 0) - (a.height ?? 0))[0] as typeof chosen;
+          const data = (await res.json()) as YtApiResponse;
+
+          const all: YtApiFormat[] = [
+            ...(data.formats ?? []),
+            ...(data.adaptiveFormats ?? []),
+          ];
+
+          // Prefer progressive mp4 (has both audio + video) — these play directly in <video>
+          const progressive = all
+            .filter(
+              (f) =>
+                f.url &&
+                (f.mimeType || "").toLowerCase().includes("video/mp4") &&
+                f.hasAudio !== false &&
+                f.hasVideo !== false,
+            )
+            .sort((a, b) => (b.height ?? 0) - (a.height ?? 0));
+
+          let chosen = progressive[0];
+
+          // Fallback: best video-only mp4 (no audio, but still previewable)
+          if (!chosen) {
+            chosen = all
+              .filter(
+                (f) =>
+                  f.url && (f.mimeType || "").toLowerCase().includes("video/mp4"),
+              )
+              .sort((a, b) => (b.height ?? 0) - (a.height ?? 0))[0];
           }
 
-          let streamUrl = chosen?.url ?? "";
-          if (chosen && !streamUrl && chosen.decipher) {
-            try {
-              streamUrl = await chosen.decipher(yt.session.player);
-            } catch {
-              /* fall through */
-            }
-          }
-
-          if (!chosen || !streamUrl) {
+          if (!chosen || !chosen.url) {
             return Response.json({
               error:
-                "No playable mp4 stream available for this video (it may be live, age-restricted, or members-only).",
+                "No playable mp4 stream returned by yt-api (video may be live, private, or age-restricted).",
             });
           }
+
+          const durationSec =
+            typeof data.lengthSeconds === "string"
+              ? parseInt(data.lengthSeconds, 10) || 0
+              : data.lengthSeconds ?? 0;
 
           return Response.json({
             videoId,
-            title: info.basic_info.title ?? "YouTube video",
-            durationSec: info.basic_info.duration ?? 0,
-            streamUrl,
-            mimeType: chosen.mime_type?.split(";")[0] || "video/mp4",
-            quality: `${chosen.height ?? "?"}p`,
+            title: data.title ?? "YouTube video",
+            durationSec,
+            streamUrl: chosen.url,
+            mimeType: (chosen.mimeType || "video/mp4").split(";")[0],
+            quality: chosen.qualityLabel || `${chosen.height ?? "?"}p`,
+            thumbnail: data.thumbnail?.[data.thumbnail.length - 1]?.url,
           });
         } catch (e) {
           const msg = e instanceof Error ? e.message : "Failed to resolve";
-          return Response.json({ error: `InnerTube error: ${msg}` });
+          return Response.json({ error: `yt-api error: ${msg}` });
         }
       },
     },
