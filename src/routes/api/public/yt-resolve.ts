@@ -54,7 +54,7 @@ type ResolvePayload = {
   mimeType: string;
   quality: string;
   thumbnail?: string;
-  source: "apify" | "rapidapi";
+  source: "apify" | "rapidapi" | "modal";
 };
 
 async function hmacHex(value: string, secret: string): Promise<string> {
