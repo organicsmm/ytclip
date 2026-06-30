@@ -1,4 +1,4 @@
-import { Check, Loader2, Circle } from "lucide-react";
+import { Check, Loader2, Circle, AlertTriangle, PartyPopper } from "lucide-react";
 import type { VideoRow } from "@/lib/autocliper-types";
 
 export type PreStage =
