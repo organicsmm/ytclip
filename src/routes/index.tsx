@@ -91,6 +91,7 @@ function Dashboard() {
     window.localStorage.setItem("skate-active-video-id", videoId);
     setClips([]);
     setVideo(null);
+    setPreStage({ kind: "idle" });
     setActiveVideoId(videoId);
   };
 
