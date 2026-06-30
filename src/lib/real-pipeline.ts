@@ -502,6 +502,174 @@ async function execWithProgress(
   }
 }
 
+function getClipExtension(mimeType: string): "mp4" | "webm" {
+  return mimeType.includes("webm") ? "webm" : "mp4";
+}
+
+async function renderClipWithMediaRecorder(
+  file: File,
+  startSec: number,
+  durationSec: number,
+  aspectRatio: PipelineConfig["aspect_ratio"],
+  onProgress: (ratio: number) => void,
+): Promise<Blob> {
+  if (typeof MediaRecorder === "undefined") {
+    throw new Error("MediaRecorder is unavailable in this browser");
+  }
+
+  const mimeType = pickRecorderMimeType();
+  const sourceUrl = URL.createObjectURL(file);
+  const video = document.createElement("video");
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d", { alpha: false });
+  if (!ctx) throw new Error("Canvas renderer unavailable");
+
+  const width = aspectRatio === "9:16" ? 540 : 720;
+  const height = aspectRatio === "9:16" ? 960 : 720;
+  canvas.width = width;
+  canvas.height = height;
+  video.src = sourceUrl;
+  video.muted = true;
+  video.playsInline = true;
+  video.preload = "auto";
+
+  try {
+    await waitForVideoMetadata(video, 15_000);
+    video.currentTime = Math.max(0, startSec);
+    await waitForVideoSeek(video, 15_000);
+
+    const stream = canvas.captureStream(24);
+    const chunks: BlobPart[] = [];
+    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    recorder.ondataavailable = (event) => {
+      if (event.data.size > 0) chunks.push(event.data);
+    };
+
+    const endAt = Math.min(video.duration || startSec + durationSec, startSec + durationSec);
+    let animationFrame = 0;
+    let lastProgress = 0;
+    const draw = () => {
+      drawVideoCover(ctx, video, width, height);
+      const ratio = Math.max(0, Math.min(1, (video.currentTime - startSec) / durationSec));
+      if (ratio - lastProgress > 0.03) {
+        lastProgress = ratio;
+        onProgress(ratio);
+      }
+      if (!video.paused && !video.ended && video.currentTime < endAt) {
+        animationFrame = requestAnimationFrame(draw);
+      }
+    };
+
+    drawVideoCover(ctx, video, width, height);
+    const stopped = new Promise<Blob>((resolve, reject) => {
+      recorder.onerror = () => reject(new Error("Recorder failed"));
+      recorder.onstop = () => {
+        const type = recorder.mimeType || mimeType || "video/webm";
+        const blob = new Blob(chunks, { type });
+        blob.size > 0 ? resolve(blob) : reject(new Error("Recorder produced an empty clip"));
+      };
+    });
+
+    recorder.start(1000);
+    await video.play();
+    draw();
+
+    await new Promise<void>((resolve) => {
+      const stop = () => {
+        if (animationFrame) cancelAnimationFrame(animationFrame);
+        video.pause();
+        if (recorder.state !== "inactive") recorder.stop();
+        resolve();
+      };
+      const timer = window.setTimeout(stop, Math.ceil(durationSec * 1000) + 1500);
+      const tick = () => {
+        if (video.currentTime >= endAt || video.ended) {
+          window.clearTimeout(timer);
+          stop();
+        } else {
+          window.setTimeout(tick, 200);
+        }
+      };
+      tick();
+    });
+
+    onProgress(1);
+    return await stopped;
+  } finally {
+    video.pause();
+    video.removeAttribute("src");
+    URL.revokeObjectURL(sourceUrl);
+  }
+}
+
+function pickRecorderMimeType(): string {
+  const options = [
+    "video/webm;codecs=vp8",
+    "video/webm",
+    "video/mp4;codecs=avc1.42E01E",
+    "video/mp4",
+  ];
+  return options.find((type) => MediaRecorder.isTypeSupported(type)) ?? "";
+}
+
+function waitForVideoMetadata(video: HTMLVideoElement, timeoutMs: number): Promise<void> {
+  if (video.readyState >= 1) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error("Video metadata timed out")), timeoutMs);
+    video.onloadedmetadata = () => {
+      window.clearTimeout(timer);
+      resolve();
+    };
+    video.onerror = () => {
+      window.clearTimeout(timer);
+      reject(new Error("Video could not be loaded for recorder"));
+    };
+  });
+}
+
+function waitForVideoSeek(video: HTMLVideoElement, timeoutMs: number): Promise<void> {
+  if (!video.seeking) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error("Video seek timed out")), timeoutMs);
+    video.onseeked = () => {
+      window.clearTimeout(timer);
+      resolve();
+    };
+    video.onerror = () => {
+      window.clearTimeout(timer);
+      reject(new Error("Video seek failed"));
+    };
+  });
+}
+
+function drawVideoCover(
+  ctx: CanvasRenderingContext2D,
+  video: HTMLVideoElement,
+  width: number,
+  height: number,
+) {
+  const sourceWidth = video.videoWidth || width;
+  const sourceHeight = video.videoHeight || height;
+  const targetAspect = width / height;
+  const sourceAspect = sourceWidth / sourceHeight;
+  let sx = 0;
+  let sy = 0;
+  let sw = sourceWidth;
+  let sh = sourceHeight;
+
+  if (sourceAspect > targetAspect) {
+    sw = sourceHeight * targetAspect;
+    sx = (sourceWidth - sw) / 2;
+  } else {
+    sh = sourceWidth / targetAspect;
+    sy = (sourceHeight - sh) / 2;
+  }
+
+  ctx.fillStyle = "#0d0d0d";
+  ctx.fillRect(0, 0, width, height);
+  ctx.drawImage(video, sx, sy, sw, sh, 0, 0, width, height);
+}
+
 function fmtTime(sec: number): string {
   const m = Math.floor(sec / 60);
   const s = Math.floor(sec % 60);
