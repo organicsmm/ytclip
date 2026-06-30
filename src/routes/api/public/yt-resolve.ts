@@ -163,6 +163,44 @@ async function resolveWithRapidApi(
   };
 }
 
+async function resolveWithModal(
+  videoId: string,
+  cleanYtUrl: string,
+): Promise<ResolvePayload | null> {
+  const base = process.env.MODAL_YT_URL;
+  const token = process.env.MODAL_AUTH_TOKEN;
+  if (!base || !token) return null;
+
+  try {
+    const res = await fetch(
+      `${base.replace(/\/$/, "")}/info?url=${encodeURIComponent(cleanYtUrl)}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      title?: string;
+      duration_sec?: number;
+      thumbnail?: string;
+      mime_type?: string;
+      stream_path?: string;
+    };
+    if (!data.stream_path) return null;
+    const streamUrl = `${base.replace(/\/$/, "")}${data.stream_path}`;
+    return {
+      videoId,
+      title: data.title ?? "YouTube video",
+      durationSec: data.duration_sec ?? 0,
+      streamUrl,
+      mimeType: data.mime_type ?? "video/mp4",
+      quality: "720p",
+      thumbnail: data.thumbnail,
+      source: "modal",
+    };
+  } catch {
+    return null;
+  }
+}
+
 export const Route = createFileRoute("/api/public/yt-resolve")({
   server: {
     handlers: {
