@@ -48,7 +48,7 @@ export const Route = createFileRoute("/api/public/yt-resolve")({
           // Some formats need decipher — youtubei.js handles it via decipher()
           if (chosen && !streamUrl) {
             try {
-              streamUrl = chosen.decipher(yt.session.player);
+              streamUrl = await chosen.decipher(yt.session.player);
             } catch {
               /* fall through */
             }
