@@ -46,7 +46,7 @@ export function PipelineTerminal({ video }: Props) {
 
       <div
         ref={scrollRef}
-        className="flex-1 overflow-auto bg-background/40 px-5 py-4 font-mono text-[12.5px] leading-relaxed"
+        className="flex-1 overflow-auto px-6 py-4 font-mono text-[11.5px] leading-relaxed text-[#e8e4dd]/85"
       >
         {!video ? (
           <div className="flex h-full flex-col items-center justify-center text-center text-muted-foreground">
