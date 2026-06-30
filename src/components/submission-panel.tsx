@@ -248,8 +248,18 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
 
   const ytVideoId = parseYouTubeId(ytUrl) ?? "";
 
+  const usagePct = quota ? Math.min(100, (quota.used / Math.max(1, quota.monthly_limit)) * 100) : 0;
+  const quotaExhausted = quota ? quota.used >= quota.monthly_limit : false;
+
   return (
     <div className="paper-card p-6 sm:p-10">
+      <UpgradeModal
+        open={upgradeOpen}
+        onOpenChange={setUpgradeOpen}
+        used={quota?.used ?? 0}
+        monthlyLimit={quota?.monthly_limit ?? 0}
+        plan={quota?.plan ?? "free"}
+      />
       <div className="mb-8 flex items-end justify-between border-b border-[color:var(--color-ink)]/10 pb-5">
         <div>
           <p className="eyebrow">Step 01 · Source</p>
@@ -257,6 +267,29 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
             Source Submission
           </h2>
         </div>
+        {quota && (
+          <button
+            onClick={() => setUpgradeOpen(true)}
+            className="text-right transition-opacity hover:opacity-80"
+            type="button"
+          >
+            <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-foreground/55">
+              {quota.plan} plan
+            </p>
+            <p className="mt-1 font-mono text-sm tabular-nums">
+              <span className={quotaExhausted ? "text-destructive font-semibold" : "text-foreground"}>
+                {quota.used}
+              </span>
+              <span className="text-foreground/40"> / {quota.monthly_limit} videos</span>
+            </p>
+            <div className="mt-1 h-1 w-32 overflow-hidden rounded-full bg-[color:var(--color-ink)]/10">
+              <div
+                className={`h-full ${quotaExhausted ? "bg-destructive" : "bg-primary"}`}
+                style={{ width: `${usagePct}%` }}
+              />
+            </div>
+          </button>
+        )}
       </div>
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as "youtube" | "upload")}>
