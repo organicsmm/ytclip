@@ -72,17 +72,17 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
         const pctTxt = total
           ? ` (${Math.round((loaded / total) * 100)}%)`
           : "";
-        setYtStatus(`Downloading "${meta.title}"…${pctTxt}`);
+        setYtStatus(`Downloading "${title}"…${pctTxt}`);
         onPreStageChange?.({ kind: "downloading", loaded, total });
       }
     }
     onPreStageChange?.({ kind: "downloading", loaded, total });
     const blob = new Blob(chunks as BlobPart[], { type: meta.mimeType || "video/mp4" });
-    const safeName = meta.title.replace(/[^\w\s-]/g, "").slice(0, 60) || "youtube-video";
+    const safeName = title.replace(/[^\w\s-]/g, "").slice(0, 60) || "youtube-video";
     const file = new File([blob], `${safeName}.mp4`, { type: meta.mimeType || "video/mp4" });
     setYtStatus(null);
     onPreStageChange?.({ kind: "uploading" });
-    return { file, title: meta.title };
+    return { file, title };
   };
 
   const handleSubmit = async () => {
