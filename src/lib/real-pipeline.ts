@@ -448,7 +448,7 @@ async function chargeQuotaOnce(videoId: string, config: PipelineConfig) {
     .select("config")
     .eq("id", videoId)
     .single();
-  const storedConfig = (data?.config ?? {}) as PipelineConfig & {
+  const storedConfig = (data?.config ?? {}) as unknown as PipelineConfig & {
     clip_count?: number;
     quota_charged?: boolean;
   };
