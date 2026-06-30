@@ -1,19 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 /**
- * Returns a short-lived 302 redirect to a fresh googlevideo URL for a YouTube
- * stream. Pass ?id=<videoId>&kind=video|audio.
- *
- * Why a redirect (not a worker proxy): the tunnel URLs from smvd embed the
- * *requesting* IP into the resulting googlevideo URL. If the worker fetches
- * the tunnel, the googlevideo URL is locked to the worker's IP — and
- * googlevideo CDN frequently 403s requests from datacenter IPs. By
- * redirecting, the browser fetches the tunnel itself, so the googlevideo URL
- * is bound to the user's IP and works.
- *
- * Note: smvd does not provide a muxed (audio+video) MP4 — only separate
- * DASH streams. The client is expected to download both and mux locally
- * (ffmpeg.wasm `-c copy`).
+ * Same-origin YouTube stream proxy. Pass ?id=<videoId>&kind=video|audio.
+ * The RapidAPI fallback returns separate DASH audio/video streams, and direct
+ * browser redirects can be blocked by CORS, so this route streams the bytes
+ * through our own endpoint.
  */
 export const Route = createFileRoute("/api/public/yt-proxy")({
   server: {
@@ -93,14 +84,55 @@ export const Route = createFileRoute("/api/public/yt-proxy")({
           return new Response(`No ${kind} stream available`, { status: 404 });
         }
 
-        return new Response(null, {
-          status: 302,
+        const range = request.headers.get("range") ?? undefined;
+        const upstream = await fetch(chosen.url, {
           headers: {
-            Location: chosen.url,
-            "Access-Control-Allow-Origin": "*",
-            "Cache-Control": "no-store",
+            "User-Agent": "Mozilla/5.0",
+            "Accept-Language": "en-US,en;q=0.9",
+            ...(range ? { Range: range } : {}),
           },
+          redirect: "follow",
         });
+
+        if (!upstream.ok && upstream.status !== 206) {
+          const body = await upstream.text().catch(() => "");
+          return new Response(
+            `Stream download failed (${upstream.status})${body ? `: ${body.slice(0, 160)}` : ""}`,
+            {
+              status: 502,
+              headers: {
+                "Access-Control-Allow-Origin": "*",
+                "Cache-Control": "no-store",
+              },
+            },
+          );
+        }
+
+        if (!upstream.body) {
+          return new Response("Stream returned no body", {
+            status: 502,
+            headers: {
+              "Access-Control-Allow-Origin": "*",
+              "Cache-Control": "no-store",
+            },
+          });
+        }
+
+        const headers = new Headers();
+        for (const h of ["content-type", "content-length", "content-range", "accept-ranges"]) {
+          const value = upstream.headers.get(h);
+          if (value) headers.set(h, value);
+        }
+        if (!headers.has("content-type")) {
+          headers.set(
+            "content-type",
+            chosen.metadata?.mime_type ?? (kind === "audio" ? "audio/mp4" : "video/mp4"),
+          );
+        }
+        headers.set("Access-Control-Allow-Origin", "*");
+        headers.set("Cache-Control", "no-store");
+
+        return new Response(upstream.body, { status: upstream.status, headers });
       },
       OPTIONS: async () =>
         new Response(null, {
