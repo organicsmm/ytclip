@@ -198,7 +198,7 @@ async function runPipeline(videoId: string, userId: string, params: StartParams)
 
     await push(`   rendering ${i + 1}/${suggestions.length} · ${c.title.slice(0, 40)}…`);
 
-    const exitCode = await ff.exec([
+    const buildArgs = (audioCodec: "aac" | "copy"): string[] => [
       "-ss",
       startStr,
       "-i",
@@ -214,26 +214,44 @@ async function runPipeline(videoId: string, userId: string, params: StartParams)
       "-tune",
       "fastdecode,zerolatency",
       "-crf",
-      "28",
+      "30",
       "-pix_fmt",
       "yuv420p",
       "-g",
       "60",
-      "-c:a",
-      "aac",
-      "-b:a",
-      "96k",
-      "-ac",
-      "2",
+      ...(audioCodec === "aac"
+        ? ["-c:a", "aac", "-b:a", "96k", "-ac", "2"]
+        : ["-c:a", "copy"]),
       "-movflags",
       "+faststart",
       "-threads",
       "0",
+      "-y",
       outName,
-    ], 300_000);
-    if (exitCode !== 0) {
-      throw new Error(`Clip ${i + 1} render timed out or failed`);
+    ];
+
+    // Per-clip auto-retry: first try a normal render, then a longer-timeout
+    // fallback that copies the audio stream (much faster, avoids aac encode stalls).
+    let exitCode = -1;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const timeoutMs = attempt === 1 ? 480_000 : 720_000;
+      const args = buildArgs(attempt === 1 ? "aac" : "copy");
+      try {
+        exitCode = await ff.exec(args, timeoutMs);
+      } catch (err) {
+        exitCode = -1;
+        await push(`   ⚠️  clip ${i + 1} attempt ${attempt} errored: ${err instanceof Error ? err.message : String(err)}`);
+      }
+      if (exitCode === 0) break;
+      if (attempt < 2) {
+        await push(`   ↻ clip ${i + 1} timed out, retrying with stream-copy audio…`);
+        try { await ff.deleteFile(outName); } catch { /* ignore */ }
+      }
     }
+    if (exitCode !== 0) {
+      throw new Error(`Clip ${i + 1} render failed after 2 attempts`);
+    }
+
 
     const fileData = (await ff.readFile(outName)) as Uint8Array;
     const blob = new Blob([fileData as BlobPart], { type: "video/mp4" });
