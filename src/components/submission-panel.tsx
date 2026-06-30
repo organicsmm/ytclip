@@ -183,6 +183,7 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
     try {
       let sourceFile: File | null = file;
       let title = file?.name.replace(/\.[^.]+$/, "") ?? "";
+      let ytUrlParam: string | null = null;
 
       if (tab === "youtube") {
         const parsed = youtubeUrlSchema.safeParse(ytUrl);
@@ -190,17 +191,8 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
           toast.error(firstError(parsed.error));
           return;
         }
-        try {
-          const fetched = await fetchYouTube();
-          sourceFile = fetched.file;
-          title = fetched.title;
-        } catch (e) {
-          const message = e instanceof Error ? e.message : "YouTube fetch failed";
-          setYtError(message);
-          onPreStageChange?.({ kind: "idle" });
-          toast.error("Couldn't fetch that YouTube video", { description: message });
-          return;
-        }
+        ytUrlParam = ytUrl;
+        title = "YouTube Video";
       } else {
         const parsed = videoFileSchema.safeParse(sourceFile);
         if (!parsed.success) {
@@ -210,7 +202,8 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
       }
 
       const startParams = {
-        file: sourceFile!,
+        file: sourceFile,
+        ytUrl: ytUrlParam,
         title,
         clipCount,
         config: {
@@ -226,7 +219,7 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
         restart: () => startRealPipeline(startParams),
       });
       toast.success("Pipeline started", {
-        description: "ffmpeg.wasm is rendering your clips locally.",
+        description: "The backend is downloading and rendering your clips.",
       });
     } catch (e) {
       const message = e instanceof Error ? e.message : "Failed to start pipeline";

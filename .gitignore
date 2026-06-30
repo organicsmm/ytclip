@@ -30,3 +30,14 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Environment & local files
+.env
+backend/.env
+.env*.local
+
+# Python
+backend/venv/
+__pycache__/
+*.pyc
+
