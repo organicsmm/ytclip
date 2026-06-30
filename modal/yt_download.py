@@ -41,7 +41,9 @@ APP_NAME = "autocliper-yt"
 image = (
     modal.Image.debian_slim(python_version="3.12")
     .apt_install("ffmpeg")
-    .pip_install("yt-dlp==2025.6.9", "fastapi[standard]==0.115.0")
+    # No version pin: always pull the latest yt-dlp to keep up with YouTube
+    # extractor changes. fastapi pinned for stable ASGI surface.
+    .pip_install("yt-dlp", "fastapi[standard]==0.115.0")
 )
 
 volume = modal.Volume.from_name("yt-cache", create_if_missing=True)
