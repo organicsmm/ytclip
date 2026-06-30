@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
-import { Link2, Upload, Sparkles, Loader2, AlertTriangle, ExternalLink, ArrowRight } from "lucide-react";
+import { Link2, Upload, Loader2, AlertTriangle, ExternalLink, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 import { startRealPipeline } from "@/lib/real-pipeline";
 import type { PipelineConfig } from "@/lib/autocliper-types";
@@ -22,6 +22,9 @@ import {
   parseYouTubeId,
   firstError,
 } from "@/lib/validation";
+import { useServerFn } from "@tanstack/react-start";
+import { getQuota, consumeVideoQuota, type Quota } from "@/lib/billing.functions";
+import { UpgradeModal } from "@/components/upgrade-modal";
 
 interface JobStartPayload {
   videoId: string;
