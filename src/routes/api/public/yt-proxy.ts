@@ -2,8 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 
 /**
  * Streams a YouTube video back to the browser. Pass ?id=<videoId>.
- * Re-resolves the stream URL via yt-api at request time (URLs from yt-api are
- * IP-locked, so we must fetch yt-api and the stream within the same request).
+ * Re-resolves a fresh tunnel URL via the smvd RapidAPI each call (tunnel URLs
+ * are short-lived and embed the caller's IP in the resulting redirect).
  */
 export const Route = createFileRoute("/api/public/yt-proxy")({
   server: {
@@ -20,66 +20,73 @@ export const Route = createFileRoute("/api/public/yt-proxy")({
           return new Response("Server missing RAPIDAPI_KEY", { status: 500 });
         }
 
-        // Re-resolve fresh URL right before fetching (IP-locked tokens)
         const metaRes = await fetch(
-          `https://yt-api.p.rapidapi.com/dl?id=${encodeURIComponent(videoId)}`,
+          `https://social-media-video-downloader.p.rapidapi.com/youtube/v3/video/details?videoId=${encodeURIComponent(videoId)}&urlAccess=normal&renderableFormats=720p%2C360p%2Chighres&getTranscript=false`,
           {
             headers: {
-              "X-RapidAPI-Key": apiKey,
-              "X-RapidAPI-Host": "yt-api.p.rapidapi.com",
+              "x-rapidapi-key": apiKey,
+              "x-rapidapi-host": "social-media-video-downloader.p.rapidapi.com",
             },
           },
         );
-        if (!metaRes.ok) {
-          return new Response(`yt-api failed (${metaRes.status})`, { status: 502 });
-        }
-        type Fmt = {
-          url?: string;
-          mimeType?: string;
-          height?: number;
-          hasAudio?: boolean;
-          hasVideo?: boolean;
-        };
-        const data = (await metaRes.json()) as { formats?: Fmt[]; adaptiveFormats?: Fmt[] };
 
-        const progressive = (data.formats ?? [])
-          .filter(
-            (f) =>
-              f.url &&
-              (f.mimeType || "").toLowerCase().includes("video/mp4") &&
-              f.hasAudio === true &&
-              f.hasVideo === true,
-          )
-          .sort((a, b) => (b.height ?? 0) - (a.height ?? 0));
-        const chosen =
-          progressive[0] ??
-          (data.adaptiveFormats ?? [])
-            .filter(
-              (f) => f.url && (f.mimeType || "").toLowerCase().includes("video/mp4"),
-            )
-            .sort((a, b) => (b.height ?? 0) - (a.height ?? 0))[0];
+        if (!metaRes.ok) {
+          return new Response(`Resolver failed (${metaRes.status})`, { status: 502 });
+        }
+
+        type V = {
+          url?: string;
+          metadata?: {
+            height?: number;
+            has_audio?: boolean;
+            has_video?: boolean;
+            mime_type?: string;
+          };
+        };
+        const data = (await metaRes.json()) as {
+          contents?: Array<{ videos?: V[] }>;
+        };
+        const videos = data.contents?.[0]?.videos ?? [];
+        const chosen = [...videos].sort((a, b) => {
+          const aw = a.metadata?.has_audio && a.metadata?.has_video ? 1 : 0;
+          const bw = b.metadata?.has_audio && b.metadata?.has_video ? 1 : 0;
+          if (aw !== bw) return bw - aw;
+          return (b.metadata?.height ?? 0) - (a.metadata?.height ?? 0);
+        })[0];
 
         if (!chosen?.url) {
-          return new Response("No mp4 stream available", { status: 404 });
+          return new Response("No stream available", { status: 404 });
         }
 
         const range = request.headers.get("range") ?? undefined;
         const upstream = await fetch(chosen.url, {
           headers: range ? { Range: range } : {},
+          redirect: "follow",
         });
 
         const headers = new Headers();
-        for (const h of ["content-type", "content-length", "content-range", "accept-ranges"]) {
+        for (const h of [
+          "content-type",
+          "content-length",
+          "content-range",
+          "accept-ranges",
+        ]) {
           const v = upstream.headers.get(h);
           if (v) headers.set(h, v);
         }
         if (!headers.has("content-type")) {
-          headers.set("content-type", (chosen.mimeType || "video/mp4").split(";")[0]);
+          headers.set(
+            "content-type",
+            (chosen.metadata?.mime_type || "video/mp4").split(";")[0],
+          );
         }
         headers.set("Access-Control-Allow-Origin", "*");
         headers.set("Cache-Control", "no-store");
 
-        return new Response(upstream.body, { status: upstream.status, headers });
+        return new Response(upstream.body, {
+          status: upstream.status,
+          headers,
+        });
       },
       OPTIONS: async () =>
         new Response(null, {

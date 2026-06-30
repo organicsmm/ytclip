@@ -17,26 +17,35 @@ function extractVideoId(input: string): string | null {
   return null;
 }
 
-type YtApiFormat = {
+type SmvdVideo = {
   url?: string;
-  mimeType?: string;
-  width?: number;
-  height?: number;
-  bitrate?: number;
-  contentLength?: string;
-  quality?: string;
-  qualityLabel?: string;
-  hasAudio?: boolean;
-  hasVideo?: boolean;
+  label?: string;
+  metadata?: {
+    itag?: number;
+    width?: number;
+    height?: number;
+    content_length?: number;
+    quality_label?: string;
+    mime_type?: string;
+    has_audio?: boolean;
+    has_video?: boolean;
+  };
 };
 
-type YtApiResponse = {
-  title?: string;
-  lengthSeconds?: string | number;
-  thumbnail?: Array<{ url: string }>;
-  formats?: YtApiFormat[];
-  adaptiveFormats?: YtApiFormat[];
-  message?: string;
+type SmvdResponse = {
+  error?: string | null;
+  contents?: Array<{
+    videos?: SmvdVideo[];
+    title?: string;
+    duration?: number;
+    duration_formatted?: string;
+    thumbnails?: Array<{ url: string }>;
+  }>;
+  metadata?: {
+    title?: string;
+    duration?: number;
+    thumbnails?: Array<{ url: string }>;
+  };
 };
 
 export const Route = createFileRoute("/api/public/yt-resolve")({
@@ -52,18 +61,16 @@ export const Route = createFileRoute("/api/public/yt-resolve")({
 
         const apiKey = process.env.RAPIDAPI_KEY;
         if (!apiKey) {
-          return Response.json({
-            error: "RAPIDAPI_KEY is not configured on the server.",
-          });
+          return Response.json({ error: "RAPIDAPI_KEY is not configured on the server." });
         }
 
         try {
           const res = await fetch(
-            `https://yt-api.p.rapidapi.com/dl?id=${encodeURIComponent(videoId)}`,
+            `https://social-media-video-downloader.p.rapidapi.com/youtube/v3/video/details?videoId=${encodeURIComponent(videoId)}&urlAccess=normal&renderableFormats=720p%2C360p%2Chighres&getTranscript=false`,
             {
               headers: {
-                "X-RapidAPI-Key": apiKey,
-                "X-RapidAPI-Host": "yt-api.p.rapidapi.com",
+                "x-rapidapi-key": apiKey,
+                "x-rapidapi-host": "social-media-video-downloader.p.rapidapi.com",
               },
             },
           );
@@ -71,64 +78,49 @@ export const Route = createFileRoute("/api/public/yt-resolve")({
           if (!res.ok) {
             const body = await res.text().catch(() => "");
             return Response.json({
-              error: `yt-api request failed (${res.status}). ${body.slice(0, 200)}`,
+              error: `Video downloader API failed (${res.status}). ${body.slice(0, 200)}`,
             });
           }
 
-          const data = (await res.json()) as YtApiResponse;
+          const data = (await res.json()) as SmvdResponse;
 
-          const all: YtApiFormat[] = [
-            ...(data.formats ?? []),
-            ...(data.adaptiveFormats ?? []),
-          ];
-
-          // Prefer progressive mp4 (has both audio + video) — these play directly in <video>
-          const progressive = (data.formats ?? [])
-            .filter(
-              (f) =>
-                f.url &&
-                (f.mimeType || "").toLowerCase().includes("video/mp4") &&
-                f.hasAudio === true &&
-                f.hasVideo === true,
-            )
-            .sort((a, b) => (b.height ?? 0) - (a.height ?? 0));
-
-          let chosen = progressive[0];
-
-          // Fallback: best video-only mp4 (no audio, but still previewable)
-          if (!chosen) {
-            chosen = all
-              .filter(
-                (f) =>
-                  f.url && (f.mimeType || "").toLowerCase().includes("video/mp4"),
-              )
-              .sort((a, b) => (b.height ?? 0) - (a.height ?? 0))[0];
+          if (data.error) {
+            return Response.json({ error: data.error });
           }
 
-          if (!chosen || !chosen.url) {
-            return Response.json({
-              error:
-                "No playable mp4 stream returned by yt-api (video may be live, private, or age-restricted).",
-            });
+          const videos: SmvdVideo[] = data.contents?.[0]?.videos ?? [];
+          if (videos.length === 0) {
+            return Response.json({ error: "No video formats returned." });
           }
 
-          const durationSec =
-            typeof data.lengthSeconds === "string"
-              ? parseInt(data.lengthSeconds, 10) || 0
-              : data.lengthSeconds ?? 0;
+          // Prefer mp4 with audio+video, then by height
+          const ranked = [...videos].sort((a, b) => {
+            const aw = (a.metadata?.has_audio && a.metadata?.has_video) ? 1 : 0;
+            const bw = (b.metadata?.has_audio && b.metadata?.has_video) ? 1 : 0;
+            if (aw !== bw) return bw - aw;
+            return (b.metadata?.height ?? 0) - (a.metadata?.height ?? 0);
+          });
+          const chosen = ranked[0];
 
+          if (!chosen?.url) {
+            return Response.json({ error: "No playable stream URL." });
+          }
+
+          const meta = data.contents?.[0];
           return Response.json({
             videoId,
-            title: data.title ?? "YouTube video",
-            durationSec,
+            title: meta?.title ?? data.metadata?.title ?? "YouTube video",
+            durationSec: meta?.duration ?? data.metadata?.duration ?? 0,
             streamUrl: chosen.url,
-            mimeType: (chosen.mimeType || "video/mp4").split(";")[0],
-            quality: chosen.qualityLabel || `${chosen.height ?? "?"}p`,
-            thumbnail: data.thumbnail?.[data.thumbnail.length - 1]?.url,
+            mimeType: chosen.metadata?.mime_type?.split(";")[0] || "video/mp4",
+            quality: chosen.metadata?.quality_label || `${chosen.metadata?.height ?? "?"}p`,
+            thumbnail:
+              meta?.thumbnails?.[meta.thumbnails.length - 1]?.url ??
+              data.metadata?.thumbnails?.[0]?.url,
           });
         } catch (e) {
           const msg = e instanceof Error ? e.message : "Failed to resolve";
-          return Response.json({ error: `yt-api error: ${msg}` });
+          return Response.json({ error: `Resolver error: ${msg}` });
         }
       },
     },
