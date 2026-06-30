@@ -13,6 +13,7 @@ import { Route as HistoryRouteImport } from './routes/history'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiPublicYtResolveRouteImport } from './routes/api/public/yt-resolve'
 import { Route as ApiPublicYtProxyRouteImport } from './routes/api/public/yt-proxy'
+import { Route as ApiPublicPaddleWebhookRouteImport } from './routes/api/public/paddle-webhook'
 
 const HistoryRoute = HistoryRouteImport.update({
   id: '/history',
@@ -34,16 +35,23 @@ const ApiPublicYtProxyRoute = ApiPublicYtProxyRouteImport.update({
   path: '/api/public/yt-proxy',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicPaddleWebhookRoute = ApiPublicPaddleWebhookRouteImport.update({
+  id: '/api/public/paddle-webhook',
+  path: '/api/public/paddle-webhook',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/history': typeof HistoryRoute
+  '/api/public/paddle-webhook': typeof ApiPublicPaddleWebhookRoute
   '/api/public/yt-proxy': typeof ApiPublicYtProxyRoute
   '/api/public/yt-resolve': typeof ApiPublicYtResolveRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/history': typeof HistoryRoute
+  '/api/public/paddle-webhook': typeof ApiPublicPaddleWebhookRoute
   '/api/public/yt-proxy': typeof ApiPublicYtProxyRoute
   '/api/public/yt-resolve': typeof ApiPublicYtResolveRoute
 }
@@ -51,6 +59,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/history': typeof HistoryRoute
+  '/api/public/paddle-webhook': typeof ApiPublicPaddleWebhookRoute
   '/api/public/yt-proxy': typeof ApiPublicYtProxyRoute
   '/api/public/yt-resolve': typeof ApiPublicYtResolveRoute
 }
@@ -59,14 +68,21 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/history'
+    | '/api/public/paddle-webhook'
     | '/api/public/yt-proxy'
     | '/api/public/yt-resolve'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/history' | '/api/public/yt-proxy' | '/api/public/yt-resolve'
+  to:
+    | '/'
+    | '/history'
+    | '/api/public/paddle-webhook'
+    | '/api/public/yt-proxy'
+    | '/api/public/yt-resolve'
   id:
     | '__root__'
     | '/'
     | '/history'
+    | '/api/public/paddle-webhook'
     | '/api/public/yt-proxy'
     | '/api/public/yt-resolve'
   fileRoutesById: FileRoutesById
@@ -74,6 +90,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   HistoryRoute: typeof HistoryRoute
+  ApiPublicPaddleWebhookRoute: typeof ApiPublicPaddleWebhookRoute
   ApiPublicYtProxyRoute: typeof ApiPublicYtProxyRoute
   ApiPublicYtResolveRoute: typeof ApiPublicYtResolveRoute
 }
@@ -108,12 +125,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicYtProxyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/paddle-webhook': {
+      id: '/api/public/paddle-webhook'
+      path: '/api/public/paddle-webhook'
+      fullPath: '/api/public/paddle-webhook'
+      preLoaderRoute: typeof ApiPublicPaddleWebhookRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   HistoryRoute: HistoryRoute,
+  ApiPublicPaddleWebhookRoute: ApiPublicPaddleWebhookRoute,
   ApiPublicYtProxyRoute: ApiPublicYtProxyRoute,
   ApiPublicYtResolveRoute: ApiPublicYtResolveRoute,
 }
