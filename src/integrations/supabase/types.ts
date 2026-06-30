@@ -67,6 +67,66 @@ export type Database = {
           },
         ]
       }
+      subscriptions: {
+        Row: {
+          created_at: string
+          current_period_end: string | null
+          id: string
+          paddle_subscription_id: string | null
+          plan: Database["public"]["Enums"]["app_plan"]
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          current_period_end?: string | null
+          id?: string
+          paddle_subscription_id?: string | null
+          plan?: Database["public"]["Enums"]["app_plan"]
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          current_period_end?: string | null
+          id?: string
+          paddle_subscription_id?: string | null
+          plan?: Database["public"]["Enums"]["app_plan"]
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      usage_counters: {
+        Row: {
+          created_at: string
+          id: string
+          period_month: string
+          updated_at: string
+          user_id: string
+          videos_used: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          period_month: string
+          updated_at?: string
+          user_id: string
+          videos_used?: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          period_month?: string
+          updated_at?: string
+          user_id?: string
+          videos_used?: number
+        }
+        Relationships: []
+      }
       videos: {
         Row: {
           config: Json
@@ -120,10 +180,31 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_user_quota: {
+        Args: { _user_id: string }
+        Returns: {
+          monthly_limit: number
+          period_month: string
+          plan: Database["public"]["Enums"]["app_plan"]
+          status: string
+          used: number
+        }[]
+      }
+      increment_video_usage: {
+        Args: { _user_id: string }
+        Returns: {
+          allowed: boolean
+          monthly_limit: number
+          used: number
+        }[]
+      }
+      plan_limit: {
+        Args: { _plan: Database["public"]["Enums"]["app_plan"] }
+        Returns: number
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_plan: "free" | "starter" | "pro"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -250,6 +331,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_plan: ["free", "starter", "pro"],
+    },
   },
 } as const
