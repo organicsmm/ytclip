@@ -186,10 +186,87 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
             We resolve the stream server-side, then run ffmpeg.wasm + Lovable AI in your browser.
             Works best on videos under ~20 min.
           </p>
-          {ytStatus && (
+          {ytStatus && !ytError && (
             <p className="mt-3 flex items-center gap-2 text-xs text-primary">
               <Loader2 className="h-3 w-3 animate-spin" /> {ytStatus}
             </p>
+          )}
+
+          {ytError && (
+            <div className="mt-4 rounded-xl border border-destructive/40 bg-destructive/5 p-4">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-foreground">
+                    Couldn't fetch this YouTube video
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    YouTube is currently blocking anonymous extraction, and all the free public
+                    resolver APIs (Piped, Invidious, Cobalt) are down or auth-walled. This is
+                    upstream — not a bug in your project.
+                  </p>
+                  <p className="mt-2 font-mono text-[11px] text-destructive/80">{ytError}</p>
+
+                  <div className="mt-4">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Workaround — download the MP4, then upload it here
+                    </p>
+                    <ol className="mt-2 space-y-1.5 text-xs text-foreground/90">
+                      <li>
+                        <span className="font-mono text-primary">1.</span> Open a free YouTube
+                        downloader in a new tab:
+                        <div className="mt-1.5 flex flex-wrap gap-2">
+                          {[
+                            {
+                              label: "cobalt.tools",
+                              href: ytVideoId
+                                ? `https://cobalt.tools/?u=${encodeURIComponent(`https://youtu.be/${ytVideoId}`)}`
+                                : "https://cobalt.tools/",
+                            },
+                            {
+                              label: "ssyoutube.com",
+                              href: ytVideoId
+                                ? `https://ssyoutube.com/watch?v=${ytVideoId}`
+                                : "https://ssyoutube.com/",
+                            },
+                            {
+                              label: "y2mate.nu",
+                              href: ytVideoId
+                                ? `https://y2mate.nu/?url=${encodeURIComponent(`https://youtu.be/${ytVideoId}`)}`
+                                : "https://y2mate.nu/",
+                            },
+                          ].map((s) => (
+                            <a
+                              key={s.label}
+                              href={s.href}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface/60 px-2.5 py-1 font-mono text-[11px] text-foreground hover:border-primary/60 hover:text-primary"
+                            >
+                              {s.label} <ExternalLink className="h-3 w-3" />
+                            </a>
+                          ))}
+                        </div>
+                      </li>
+                      <li>
+                        <span className="font-mono text-primary">2.</span> Pick an MP4 (360p or
+                        720p is fine — smaller = faster ffmpeg.wasm).
+                      </li>
+                      <li>
+                        <span className="font-mono text-primary">3.</span> Come back and drop it
+                        into Local Upload.
+                      </li>
+                    </ol>
+                    <Button
+                      onClick={switchToUpload}
+                      className="btn-glow mt-4 h-10 w-full rounded-lg text-sm font-semibold"
+                    >
+                      Switch to Local Upload <ArrowRight className="ml-2 h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
           )}
         </TabsContent>
 
