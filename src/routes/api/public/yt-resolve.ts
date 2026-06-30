@@ -54,7 +54,7 @@ type ResolvePayload = {
   mimeType: string;
   quality: string;
   thumbnail?: string;
-  source: "apify" | "rapidapi";
+  source: "apify" | "rapidapi" | "modal";
 };
 
 async function hmacHex(value: string, secret: string): Promise<string> {
@@ -163,6 +163,44 @@ async function resolveWithRapidApi(
   };
 }
 
+async function resolveWithModal(
+  videoId: string,
+  cleanYtUrl: string,
+): Promise<ResolvePayload | null> {
+  const base = process.env.MODAL_YT_URL;
+  const token = process.env.MODAL_AUTH_TOKEN;
+  if (!base || !token) return null;
+
+  try {
+    const res = await fetch(
+      `${base.replace(/\/$/, "")}/info?url=${encodeURIComponent(cleanYtUrl)}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      title?: string;
+      duration_sec?: number;
+      thumbnail?: string;
+      mime_type?: string;
+      stream_path?: string;
+    };
+    if (!data.stream_path) return null;
+    const streamUrl = `${base.replace(/\/$/, "")}${data.stream_path}`;
+    return {
+      videoId,
+      title: data.title ?? "YouTube video",
+      durationSec: data.duration_sec ?? 0,
+      streamUrl,
+      mimeType: data.mime_type ?? "video/mp4",
+      quality: "720p",
+      thumbnail: data.thumbnail,
+      source: "modal",
+    };
+  } catch {
+    return null;
+  }
+}
+
 export const Route = createFileRoute("/api/public/yt-resolve")({
   server: {
     handlers: {
@@ -228,7 +266,11 @@ export const Route = createFileRoute("/api/public/yt-resolve")({
             ),
           ]).then(([titleResult, apifyResult]) => [apifyResult, titleResult] as const);
 
-          const rapidFallback = () => resolveWithRapidApi(videoId, cleanYtUrl, title);
+          const rapidFallback = async () => {
+            const modal = await resolveWithModal(videoId, cleanYtUrl);
+            if (modal) return modal;
+            return resolveWithRapidApi(videoId, cleanYtUrl, title);
+          };
 
           if (!res.ok) {
             const fallback = await rapidFallback();
@@ -276,6 +318,8 @@ export const Route = createFileRoute("/api/public/yt-resolve")({
             source: "apify",
           });
         } catch (e) {
+          const modal = await resolveWithModal(videoId, cleanYtUrl);
+          if (modal) return Response.json(modal);
           const fallback = await resolveWithRapidApi(videoId, cleanYtUrl, await fetchTitle(cleanYtUrl));
           if (fallback) return Response.json(fallback);
           const msg = e instanceof Error ? e.message : "Failed to resolve";
