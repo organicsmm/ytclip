@@ -195,7 +195,7 @@ async function runPipeline(videoId: string, userId: string, params: StartParams)
 
     const fileData = (await ff.readFile(outName)) as Uint8Array;
     const blob = new Blob([fileData as BlobPart], { type: "video/mp4" });
-    const clipKey = `${videoId}/clip_${i}.mp4`;
+    const clipKey = `${userId}/${videoId}/clip_${i}.mp4`;
     const { error: clipUpErr } = await supabase.storage
       .from("clips")
       .upload(clipKey, blob, { upsert: true, contentType: "video/mp4" });
@@ -206,6 +206,7 @@ async function runPipeline(videoId: string, userId: string, params: StartParams)
       .createSignedUrl(clipKey, 60 * 60 * 24 * 7);
 
     await supabase.from("clips").insert({
+      user_id: userId,
       video_id: videoId,
       title: c.title,
       hook: c.hook,
