@@ -48,6 +48,23 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
   const [clipCount, setClipCount] = useState(5);
   const [submitting, setSubmitting] = useState(false);
   const [ytError, setYtError] = useState<string | null>(null);
+  const [quota, setQuota] = useState<Quota | null>(null);
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
+  const fetchQuota = useServerFn(getQuota);
+  const consumeQuota = useServerFn(consumeVideoQuota);
+
+  const refreshQuota = async () => {
+    try {
+      const q = await fetchQuota();
+      setQuota(q);
+    } catch (e) {
+      console.warn("[quota] failed to load", e);
+    }
+  };
+  useEffect(() => {
+    void refreshQuota();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const fetchYouTube = async (): Promise<{ file: File; title: string }> => {
     setYtStatus("Resolving YouTube video…");
