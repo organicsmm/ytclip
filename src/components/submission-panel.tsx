@@ -16,6 +16,12 @@ import { toast } from "sonner";
 import { startRealPipeline } from "@/lib/real-pipeline";
 import type { PipelineConfig } from "@/lib/autocliper-types";
 import type { PreStage } from "@/components/pipeline-stages";
+import {
+  youtubeUrlSchema,
+  videoFileSchema,
+  parseYouTubeId,
+  firstError,
+} from "@/lib/validation";
 
 interface Props {
   onJobStarted: (videoId: string) => void;
