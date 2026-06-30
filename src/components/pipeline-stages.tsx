@@ -221,26 +221,34 @@ function buildStages(video: VideoRow | null, pre: PreStage): StageInfo[] {
     ytDownload,
     {
       key: "upload",
-      label: "Upload to Lovable Cloud",
+      label: "Step 1 · Upload to Lovable Cloud",
       state: stateFor("downloading"),
-      detail: video && idx >= 0 ? `progress ${Math.round(video.progress)}%` : undefined,
+      detail:
+        video && stage === "downloading"
+          ? `${Math.round(video.progress)}% uploaded`
+          : undefined,
     },
     {
-      key: "ffmpeg",
-      label: "Load ffmpeg.wasm & probe video",
+      key: "transcribe",
+      label: "Step 2 · Transcribe audio",
+      detail:
+        video && stage === "transcribing" ? "Probing video & loading ffmpeg.wasm…" : undefined,
       state: stateFor("transcribing"),
     },
     {
-      key: "ai",
-      label: "AI selects viral moments",
+      key: "rank",
+      label: "Step 3 · Rank viral moments",
+      detail: video && stage === "selecting" ? "Lovable AI scoring highlights…" : undefined,
       state: stateFor("selecting"),
     },
     {
       key: "render",
-      label: "Render & export clips",
+      label: "Step 4 · Render & export clips",
       state: stateFor("rendering"),
       detail:
-        video && stage === "rendering" ? `progress ${Math.round(video.progress)}%` : undefined,
+        video && stage === "rendering"
+          ? `${Math.round(video.progress)}% rendered`
+          : undefined,
     },
   ];
 
