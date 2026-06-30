@@ -571,10 +571,12 @@ async function renderClipWithMediaRecorder(
   canvas.width = width;
   canvas.height = height;
   video.src = sourceUrl;
-  // Keep audible playback silent on the page, but DO NOT mute the element
-  // (muting drops audio tracks from captureStream on some browsers).
+  // DO NOT mute the element or set volume to 0: the WebAudio/MediaRecorder
+  // path records post-volume audio in some browsers, which creates silent clips.
+  // The page stays silent because the WebAudio source is not connected to the
+  // speakers below.
   video.muted = false;
-  video.volume = 0;
+  video.volume = 1;
   video.playsInline = true;
   video.preload = "auto";
   video.crossOrigin = "anonymous";

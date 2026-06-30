@@ -54,7 +54,8 @@ async function downloadClip(clip: ClipRow): Promise<void> {
     const a = document.createElement("a");
     a.href = objectUrl;
     const safe = clip.title.replace(/[^\w\s-]/g, "").trim().slice(0, 60) || "clip";
-    a.download = `${safe}.mp4`;
+    const ext = getDownloadExtension(blob.type, path);
+    a.download = `${safe}.${ext}`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -64,6 +65,13 @@ async function downloadClip(clip: ClipRow): Promise<void> {
       description: e instanceof Error ? e.message : "Try again in a moment.",
     });
   }
+}
+
+function getDownloadExtension(mimeType: string, path: string): "mp4" | "webm" {
+  const type = mimeType.toLowerCase();
+  if (type.includes("webm")) return "webm";
+  if (type.includes("mp4")) return "mp4";
+  return path.toLowerCase().endsWith(".webm") ? "webm" : "mp4";
 }
 
 interface Props {
@@ -225,7 +233,7 @@ function ClipCard({ clip }: { clip: ClipRow }) {
           onClick={handleDownload}
           className="btn-glow mt-3 h-11 w-full rounded-none text-[10px] font-semibold uppercase tracking-[0.28em]"
           disabled={!ready || downloading}
-          title={ready ? "Download MP4" : "Clip is still rendering — try again in a moment"}
+          title={ready ? "Download clip" : "Clip is still rendering — try again in a moment"}
         >
           {downloading ? (
             <>
@@ -233,7 +241,7 @@ function ClipCard({ clip }: { clip: ClipRow }) {
             </>
           ) : ready ? (
             <>
-              <Download className="mr-2 h-3.5 w-3.5" /> Download MP4
+              <Download className="mr-2 h-3.5 w-3.5" /> Download Clip
             </>
           ) : (
             <>
