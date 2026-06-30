@@ -86,7 +86,7 @@ export const Route = createFileRoute("/api/public/yt-resolve")({
               body: JSON.stringify({
                 startUrls: [cleanYtUrl],
                 videoIds: [videoId],
-                quality: "360p",
+                quality: "720",
               }),
             },
           );
