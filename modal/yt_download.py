@@ -123,13 +123,15 @@ def download(video_id: str) -> dict:
         "retries": 5,
         "fragment_retries": 5,
         "extractor_retries": 3,
-        # Bot-bypass: prefer mobile/web clients that don't require sign-in.
+        # Bot-bypass: tv_embedded + web_safari work best without cookies right now.
+        # mweb is currently broken for many videos (returns 500 from googlevideo).
         "extractor_args": {
             "youtube": {
-                "player_client": ["mweb", "web_safari", "android", "ios"],
-                "player_skip": ["configs"],
+                "player_client": ["tv_embedded", "web_safari", "ios", "android"],
+                "player_skip": ["configs", "webpage"],
             }
         },
+
         "http_headers": {
             "User-Agent": (
                 "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) "
