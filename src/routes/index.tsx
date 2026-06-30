@@ -101,9 +101,14 @@ function Dashboard() {
 
       <section className="mt-12 grid gap-6 lg:grid-cols-5">
         <div className="lg:col-span-3">
-          <SubmissionPanel onJobStarted={handleJobStarted} disabled={video?.status === "processing"} />
+          <SubmissionPanel
+            onJobStarted={handleJobStarted}
+            onPreStageChange={setPreStage}
+            disabled={video?.status === "processing"}
+          />
         </div>
-        <div className="lg:col-span-2">
+        <div className="flex flex-col gap-6 lg:col-span-2">
+          <PipelineStages video={video} preStage={preStage} />
           <PipelineTerminal video={video} />
         </div>
       </section>
