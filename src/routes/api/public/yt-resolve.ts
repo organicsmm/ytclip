@@ -35,6 +35,18 @@ export const Route = createFileRoute("/api/public/yt-resolve")({
           });
           const info = await yt.getBasicInfo(videoId);
 
+          // YouTube currently bot-blocks all anonymous extraction methods
+          const status = info.playability_status?.status;
+          if (status && status !== "OK") {
+            const reason = info.playability_status?.reason ?? status;
+            return Response.json(
+              {
+                error: `YouTube blocked extraction (${status}: ${reason}). All free public resolvers are currently bot-walled. Please download the MP4 manually and use Local Upload.`,
+              },
+              { status: 502 },
+            );
+          }
+
           // Try progressive (audio+video) first — modern videos rarely have these above 360p
           let chosen: { url?: string; mime_type?: string; height?: number; decipher?: (p: unknown) => string | Promise<string> } | undefined;
           try {
