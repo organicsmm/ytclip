@@ -117,18 +117,21 @@ export const Route = createFileRoute("/api/public/yt-resolve")({
               return (b.height ?? 0) - (a.height ?? 0);
             });
           const chosen = ranked[0];
-          if (!chosen?.url) {
-            return Response.json({ error: "No playable stream URL from Apify." });
+          const streamUrl = topUrl || chosen?.url;
+          if (!streamUrl) {
+            return Response.json({
+              error: `No playable stream URL from Apify. Got: ${JSON.stringify(item).slice(0, 300)}`,
+            });
           }
 
           return Response.json({
             videoId,
             title: item.title ?? "YouTube video",
-            durationSec: parseDuration(item.duration),
-            streamUrl: chosen.url,
-            mimeType: chosen.mime_type?.split(";")[0] || "video/mp4",
-            quality: chosen.quality || `${chosen.height ?? "?"}p`,
-            thumbnail: item.thumbnail,
+            durationSec: parseDuration(item.durationSec ?? item.duration),
+            streamUrl,
+            mimeType: chosen?.mime_type?.split(";")[0] || item.mimeType?.split(";")[0] || "video/mp4",
+            quality: chosen?.quality || item.quality || `${chosen?.height ?? item.height ?? "?"}p`,
+            thumbnail: item.thumbnail || item.thumbnailUrl,
           });
         } catch (e) {
           const msg = e instanceof Error ? e.message : "Failed to resolve";
