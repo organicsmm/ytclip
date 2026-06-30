@@ -138,6 +138,7 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
         } catch (e) {
           const message = e instanceof Error ? e.message : "YouTube fetch failed";
           setYtError(message);
+          onPreStageChange?.({ kind: "idle" });
           toast.error("Couldn't fetch that YouTube video", { description: message });
           return;
         }
@@ -238,9 +239,8 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
                     Couldn't fetch this YouTube video
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    YouTube is currently blocking anonymous extraction, and all the free public
-                    resolver APIs (Piped, Invidious, Cobalt) are down or auth-walled. This is
-                    upstream — not a bug in your project.
+                    Modal is connected, but the deployed downloader is still failing upstream.
+                    Redeploy the latest Modal file, then retry this same link.
                   </p>
                   <p className="mt-2 font-mono text-[11px] text-destructive/80">{ytError}</p>
 
