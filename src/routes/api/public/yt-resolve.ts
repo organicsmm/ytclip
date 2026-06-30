@@ -86,10 +86,7 @@ export const Route = createFileRoute("/api/public/yt-resolve")({
           });
         } catch (e) {
           const msg = e instanceof Error ? e.message : "Failed to resolve";
-          return Response.json(
-            { error: `InnerTube error: ${msg}` },
-            { status: 502 },
-          );
+          return Response.json({ error: `InnerTube error: ${msg}` });
         }
       },
     },
