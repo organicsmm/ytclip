@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as HistoryRouteImport } from './routes/history'
+import { Route as BillingRouteImport } from './routes/billing'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiPublicYtResolveRouteImport } from './routes/api/public/yt-resolve'
 import { Route as ApiPublicYtProxyRouteImport } from './routes/api/public/yt-proxy'
@@ -18,6 +19,11 @@ import { Route as ApiPublicPaddleWebhookRouteImport } from './routes/api/public/
 const HistoryRoute = HistoryRouteImport.update({
   id: '/history',
   path: '/history',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BillingRoute = BillingRouteImport.update({
+  id: '/billing',
+  path: '/billing',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -43,6 +49,7 @@ const ApiPublicPaddleWebhookRoute = ApiPublicPaddleWebhookRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/billing': typeof BillingRoute
   '/history': typeof HistoryRoute
   '/api/public/paddle-webhook': typeof ApiPublicPaddleWebhookRoute
   '/api/public/yt-proxy': typeof ApiPublicYtProxyRoute
@@ -50,6 +57,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/billing': typeof BillingRoute
   '/history': typeof HistoryRoute
   '/api/public/paddle-webhook': typeof ApiPublicPaddleWebhookRoute
   '/api/public/yt-proxy': typeof ApiPublicYtProxyRoute
@@ -58,6 +66,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/billing': typeof BillingRoute
   '/history': typeof HistoryRoute
   '/api/public/paddle-webhook': typeof ApiPublicPaddleWebhookRoute
   '/api/public/yt-proxy': typeof ApiPublicYtProxyRoute
@@ -67,6 +76,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/billing'
     | '/history'
     | '/api/public/paddle-webhook'
     | '/api/public/yt-proxy'
@@ -74,6 +84,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/billing'
     | '/history'
     | '/api/public/paddle-webhook'
     | '/api/public/yt-proxy'
@@ -81,6 +92,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/billing'
     | '/history'
     | '/api/public/paddle-webhook'
     | '/api/public/yt-proxy'
@@ -89,6 +101,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  BillingRoute: typeof BillingRoute
   HistoryRoute: typeof HistoryRoute
   ApiPublicPaddleWebhookRoute: typeof ApiPublicPaddleWebhookRoute
   ApiPublicYtProxyRoute: typeof ApiPublicYtProxyRoute
@@ -102,6 +115,13 @@ declare module '@tanstack/react-router' {
       path: '/history'
       fullPath: '/history'
       preLoaderRoute: typeof HistoryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/billing': {
+      id: '/billing'
+      path: '/billing'
+      fullPath: '/billing'
+      preLoaderRoute: typeof BillingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -137,6 +157,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  BillingRoute: BillingRoute,
   HistoryRoute: HistoryRoute,
   ApiPublicPaddleWebhookRoute: ApiPublicPaddleWebhookRoute,
   ApiPublicYtProxyRoute: ApiPublicYtProxyRoute,
