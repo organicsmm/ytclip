@@ -41,9 +41,9 @@ APP_NAME = "autocliper-yt"
 image = (
     modal.Image.debian_slim(python_version="3.12")
     .apt_install("ffmpeg")
-    # No version pin: always pull the latest yt-dlp to keep up with YouTube
-    # extractor changes. fastapi pinned for stable ASGI surface.
-    .pip_install("yt-dlp", "fastapi[standard]==0.115.0")
+    # Pin the current yt-dlp release so Modal's image hash changes on updates;
+    # otherwise an unpinned dependency can stay cached across deploys.
+    .pip_install("yt-dlp==2026.6.9", "fastapi[standard]==0.115.0")
 )
 
 volume = modal.Volume.from_name("yt-cache", create_if_missing=True)
@@ -195,7 +195,9 @@ def download(video_id: str) -> dict:
     image=image,
     volumes={CACHE_DIR: volume},
     secrets=[modal.Secret.from_name("yt-auth")],
-    timeout=120,
+    # /info waits for the first download to finish so the app receives a real MP4.
+    # 120s caused Modal platform 500s for slower YouTube downloads.
+    timeout=900,
     min_containers=0,
 )
 @modal.concurrent(max_inputs=20)
