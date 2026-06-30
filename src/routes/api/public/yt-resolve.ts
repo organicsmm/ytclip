@@ -153,7 +153,7 @@ async function resolveWithApify(
 
   try {
     const res = await fetchWithTimeout(
-      `https://api.apify.com/v2/acts/scraper_one~yt-downloader/run-sync?token=${encodeURIComponent(apiToken)}`,
+      `https://api.apify.com/v2/acts/scraper_one~yt-downloader/run-sync-get-dataset-items?token=${encodeURIComponent(apiToken)}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
