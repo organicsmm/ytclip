@@ -17,39 +17,106 @@ function extractVideoId(input: string): string | null {
   return null;
 }
 
-/**
- * Apify-based YouTube resolver using `api-ninja/youtube-video-downloader`.
- * Returns YouTube's native `formats` (combined a/v) and `adaptiveFormats`.
- * Runs on Apify's cloud — independent of dev/user machines.
- */
-type YtFormat = {
-  itag?: number;
-  url?: string;
-  mimeType?: string;
-  width?: number;
-  height?: number;
-  quality?: string;
-  qualityLabel?: string;
-  contentLength?: string;
-  approxDurationMs?: string;
-  audioQuality?: string;
-};
-
 type ApifyItem = {
-  status?: string;
+  status?: "completed" | "failed" | "OK" | string;
+  jobId?: string;
+  videoId?: string;
   id?: string;
   title?: string;
+  originalUrl?: string;
+  downloadUrl?: string;
+  storageUrl?: string;
+  contentType?: string;
+  fileSizeMB?: string | number;
+  fileSizeBytes?: string | number;
+  expiresAt?: string;
+  error?: string;
   lengthSeconds?: string | number;
   thumbnail?: Array<{ url?: string }>;
-  formats?: YtFormat[];
-  adaptiveFormats?: YtFormat[];
 };
+
+async function hmacHex(value: string, secret: string): Promise<string> {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const bytes = new Uint8Array(await crypto.subtle.sign("HMAC", key, enc.encode(value)));
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function safeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let out = 0;
+  for (let i = 0; i < a.length; i++) out |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return out === 0;
+}
+
+function isAllowedMediaUrl(raw: string): boolean {
+  try {
+    const url = new URL(raw);
+    return url.protocol === "https:" && url.hostname === "apify.dziura.online" && url.pathname.startsWith("/temp/");
+  } catch {
+    return false;
+  }
+}
+
+async function fetchTitle(cleanYtUrl: string): Promise<string | null> {
+  try {
+    const res = await fetch(
+      `https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(cleanYtUrl)}`,
+      { headers: { Accept: "application/json" } },
+    );
+    if (!res.ok) return null;
+    const data = (await res.json()) as { title?: string };
+    return data.title || null;
+  } catch {
+    return null;
+  }
+}
 
 export const Route = createFileRoute("/api/public/yt-resolve")({
   server: {
     handlers: {
       GET: async ({ request }) => {
         const url = new URL(request.url);
+        if (url.searchParams.get("download") === "1") {
+          const mediaUrl = url.searchParams.get("u") ?? "";
+          const sig = url.searchParams.get("sig") ?? "";
+          const apifyToken = process.env.APIFY_API_TOKEN;
+          if (!apifyToken) return new Response("Server missing APIFY_API_TOKEN", { status: 500 });
+          if (!mediaUrl || !sig || !isAllowedMediaUrl(mediaUrl)) {
+            return new Response("Invalid download URL", { status: 400 });
+          }
+          const expected = await hmacHex(mediaUrl, apifyToken);
+          if (!safeEqual(sig, expected)) return new Response("Invalid download signature", { status: 403 });
+
+          const range = request.headers.get("range") ?? undefined;
+          const upstream = await fetch(mediaUrl, {
+            headers: {
+              "User-Agent": "Mozilla/5.0",
+              ...(range ? { Range: range } : {}),
+            },
+            redirect: "follow",
+          });
+          if (!upstream.ok && upstream.status !== 206) {
+            return new Response(`Cloud media download failed (${upstream.status})`, { status: 502 });
+          }
+
+          const headers = new Headers();
+          for (const h of ["content-type", "content-length", "content-range", "accept-ranges"]) {
+            const v = upstream.headers.get(h);
+            if (v) headers.set(h, v);
+          }
+          if (!headers.has("content-type")) headers.set("content-type", "video/mp4");
+          headers.set("Cache-Control", "no-store");
+          headers.set("Access-Control-Allow-Origin", "*");
+          return new Response(upstream.body, { status: upstream.status, headers });
+        }
+
         const ytUrl = url.searchParams.get("url") ?? "";
         const videoId = extractVideoId(ytUrl);
         if (!videoId) {
@@ -64,14 +131,17 @@ export const Route = createFileRoute("/api/public/yt-resolve")({
         const cleanYtUrl = `https://www.youtube.com/watch?v=${videoId}`;
 
         try {
-          const res = await fetch(
+          const [res, title] = await Promise.all([
+            fetchTitle(cleanYtUrl),
+            fetch(
             `https://api.apify.com/v2/acts/api-ninja~youtube-video-downloader/run-sync-get-dataset-items?token=${encodeURIComponent(apifyToken)}&timeout=180`,
             {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ urls: [cleanYtUrl] }),
+                body: JSON.stringify({ urls: [cleanYtUrl], format: "360", ttl: "none" }),
             },
-          );
+            ),
+          ]).then(([titleResult, apifyResult]) => [apifyResult, titleResult] as const);
 
           if (!res.ok) {
             const body = await res.text().catch(() => "");
@@ -82,25 +152,20 @@ export const Route = createFileRoute("/api/public/yt-resolve")({
 
           const items = (await res.json()) as ApifyItem[];
           const item = items?.[0];
-          if (!item || item.status !== "OK") {
+          if (!item || item.status === "failed" || item.error) {
             return Response.json({
-              error: `Apify returned no playable item. Got: ${JSON.stringify(item ?? items).slice(0, 300)}`,
+              error: `Apify could not prepare this video. ${item?.error ?? JSON.stringify(item ?? items).slice(0, 300)}`,
             });
           }
 
-          // Prefer combined audio+video mp4 (itag 18 = 360p, itag 22 = 720p).
-          // These play in the browser without muxing, so ffmpeg.wasm input is one file.
-          const combined = (item.formats ?? []).filter(
-            (f) => f.url && f.mimeType?.startsWith("video/mp4") && f.audioQuality,
-          );
-          combined.sort((a, b) => (b.height ?? 0) - (a.height ?? 0));
-          const chosen = combined[0] ?? item.formats?.[0];
-
-          if (!chosen?.url) {
+          const directUrl = item.downloadUrl || item.storageUrl;
+          if (!directUrl || !isAllowedMediaUrl(directUrl)) {
             return Response.json({
-              error: "No combined audio+video mp4 stream found in Apify response.",
+              error: `Apify returned no downloadable MP4. Got: ${JSON.stringify(item ?? items).slice(0, 300)}`,
             });
           }
+          const sig = await hmacHex(directUrl, apifyToken);
+          const proxyUrl = `/api/public/yt-resolve?download=1&u=${encodeURIComponent(directUrl)}&sig=${sig}`;
 
           const durationSec =
             typeof item.lengthSeconds === "string"
@@ -109,11 +174,11 @@ export const Route = createFileRoute("/api/public/yt-resolve")({
 
           return Response.json({
             videoId,
-            title: item.title ?? "YouTube video",
+            title: item.title ?? title ?? "YouTube video",
             durationSec,
-            streamUrl: chosen.url,
-            mimeType: chosen.mimeType?.split(";")[0] || "video/mp4",
-            quality: chosen.qualityLabel || chosen.quality || `${chosen.height ?? "?"}p`,
+            streamUrl: proxyUrl,
+            mimeType: item.contentType?.split(";")[0] || "video/mp4",
+            quality: "360p",
             thumbnail: item.thumbnail?.[item.thumbnail.length - 1]?.url,
           });
         } catch (e) {
