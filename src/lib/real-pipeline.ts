@@ -156,10 +156,12 @@ async function runPipeline(videoId: string, userId: string, params: StartParams)
     progress: 65,
   });
 
+  // 720p output renders ~2-3x faster than 1080p in ffmpeg.wasm and still looks
+  // crisp on TikTok/Reels/Shorts (which re-encode uploads anyway).
   const cropFilter =
     params.config.aspect_ratio === "9:16"
-      ? "crop=ih*9/16:ih,scale=1080:1920:flags=lanczos"
-      : "crop=ih:ih,scale=1080:1080:flags=lanczos";
+      ? "crop=ih*9/16:ih,scale=720:1280:flags=fast_bilinear"
+      : "crop=ih:ih,scale=720:720:flags=fast_bilinear";
 
   for (let i = 0; i < suggestions.length; i++) {
     const c = suggestions[i];
