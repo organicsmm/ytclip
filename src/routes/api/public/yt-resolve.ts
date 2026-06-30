@@ -246,6 +246,18 @@ export const Route = createFileRoute("/api/public/yt-resolve")({
           return Response.json({ error: "Invalid YouTube URL" }, { status: 400 });
         }
 
+        const cleanYtUrlEarly = `https://www.youtube.com/watch?v=${videoId}`;
+        // Modal is primary — Apify disabled.
+        const modalFirst = await resolveWithModal(videoId, cleanYtUrlEarly);
+        if (modalFirst) return Response.json(modalFirst);
+
+        // If Modal fails, try RapidAPI as last resort.
+        const rapidLast = await resolveWithRapidApi(videoId, cleanYtUrlEarly, await fetchTitle(cleanYtUrlEarly));
+        if (rapidLast) return Response.json(rapidLast);
+
+        return Response.json({ error: "Modal resolver failed and no fallback available." });
+
+        // eslint-disable-next-line no-unreachable
         const apifyToken = process.env.APIFY_API_TOKEN;
         if (!apifyToken) {
           return Response.json({ error: "APIFY_API_TOKEN is not configured on the server." });
