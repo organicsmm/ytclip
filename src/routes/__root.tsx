@@ -28,7 +28,7 @@ function NotFoundComponent() {
           to="/"
           className="btn-glow mt-6 inline-flex items-center justify-center rounded-lg px-5 py-2.5 text-sm font-medium"
         >
-          Back to Skate AI
+          Back to AutoCliper
         </Link>
       </div>
     </div>
@@ -76,14 +76,14 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Skate AI — Turn Long Videos Into Viral Shorts" },
+      { title: "AutoCliper — Turn Long Videos Into Viral Shorts" },
       {
         name: "description",
         content:
-          "Skate AI transcribes, ranks, and renders the most engaging moments from any long-form video into vertical shorts — no install required.",
+          "AutoCliper transcribes, ranks, and renders the most engaging moments from any long-form video into vertical shorts — no install required.",
       },
-      { name: "author", content: "Skate AI" },
-      { property: "og:title", content: "Skate AI — Turn Long Videos Into Viral Shorts" },
+      { name: "author", content: "AutoCliper" },
+      { property: "og:title", content: "AutoCliper — Turn Long Videos Into Viral Shorts" },
       {
         property: "og:description",
         content:
@@ -91,7 +91,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:site", content: "@SkateAI" },
+      { name: "twitter:site", content: "@AutoCliper" },
     ],
     links: [
       { rel: "stylesheet", href: appCss },

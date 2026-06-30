@@ -6,16 +6,16 @@ import { PipelineStages, type PreStage } from "@/components/pipeline-stages";
 import { ClipsGrid } from "@/components/clips-grid";
 import { Hero } from "@/components/hero";
 import { supabase } from "@/integrations/supabase/client";
-import type { VideoRow, ClipRow } from "@/lib/skate-types";
+import type { VideoRow, ClipRow } from "@/lib/autocliper-types";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Skate AI — Dashboard" },
+      { title: "AutoCliper — Dashboard" },
       {
         name: "description",
         content:
-          "Submit a YouTube URL or upload a video and Skate AI will deliver AI-ranked vertical shorts with stylized subtitles.",
+          "Submit a YouTube URL or upload a video and AutoCliper will deliver AI-ranked vertical shorts with stylized subtitles.",
       },
     ],
   }),
@@ -29,7 +29,7 @@ function Dashboard() {
   const [preStage, setPreStage] = useState<PreStage>({ kind: "idle" });
 
   useEffect(() => {
-    const savedVideoId = window.localStorage.getItem("skate-active-video-id");
+    const savedVideoId = window.localStorage.getItem("autocliper-active-video-id");
     if (savedVideoId) setActiveVideoId(savedVideoId);
   }, []);
 
@@ -87,7 +87,7 @@ function Dashboard() {
   }, [activeVideoId]);
 
   const handleJobStarted = (videoId: string) => {
-    window.localStorage.setItem("skate-active-video-id", videoId);
+    window.localStorage.setItem("autocliper-active-video-id", videoId);
     setClips([]);
     setVideo(null);
     setPreStage({ kind: "idle" });
@@ -119,7 +119,7 @@ function Dashboard() {
       </section>
 
       <footer className="mt-20 flex flex-col gap-2 border-t border-[color:var(--color-ink)]/10 pt-6 text-[10px] uppercase tracking-[0.28em] text-foreground/45 md:flex-row md:items-center md:justify-between">
-        <span className="font-mono">© MMXXVI · Skate Artificial Intelligence</span>
+        <span className="font-mono">© MMXXVI · AutoCliper</span>
         <span className="font-display text-sm italic normal-case tracking-normal text-foreground/55">
           Refinement Variant 04
         </span>

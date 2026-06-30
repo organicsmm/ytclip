@@ -1,4 +1,4 @@
-import type { ClipRow, VideoRow } from "@/lib/skate-types";
+import type { ClipRow, VideoRow } from "@/lib/autocliper-types";
 import { Download, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 

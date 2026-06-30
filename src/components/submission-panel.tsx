@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Link2, Upload, Sparkles, Loader2, AlertTriangle, ExternalLink, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 import { startRealPipeline } from "@/lib/real-pipeline";
-import type { PipelineConfig } from "@/lib/skate-types";
+import type { PipelineConfig } from "@/lib/autocliper-types";
 import type { PreStage } from "@/components/pipeline-stages";
 
 interface Props {

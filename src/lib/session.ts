@@ -5,7 +5,7 @@ let pending: Promise<User> | null = null;
 
 /**
  * Returns the current user, creating an anonymous Supabase session on first
- * use. All Skate AI data (videos, clips, storage objects) is scoped to this
+ * use. All AutoCliper data (videos, clips, storage objects) is scoped to this
  * user via RLS, so we MUST have a session before touching the API.
  */
 export async function ensureSessionUser(): Promise<User> {

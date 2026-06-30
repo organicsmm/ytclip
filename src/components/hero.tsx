@@ -12,7 +12,7 @@ export function Hero() {
         </div>
         <div className="md:col-span-4">
           <p className="max-w-sm text-base leading-relaxed text-foreground/75 md:text-[17px]">
-            Paste a link or upload a file. Skate AI transcribes, ranks the most engaging moments,
+            Paste a link or upload a file. AutoCliper transcribes, ranks the most engaging moments,
             crops to vertical, and burns in animated subtitles — ready to post.
           </p>
           <div className="mt-6 flex flex-wrap gap-x-6 gap-y-2 font-mono text-[10px] uppercase tracking-[0.22em] text-foreground/55">
