@@ -69,17 +69,19 @@ function Dashboard() {
         .eq("id", activeVideoId)
         .maybeSingle();
       if (!cancelled && v) {
-        const nextVideo = v as unknown as VideoRow;
+        let nextVideo = v as unknown as VideoRow;
         isProcessing = nextVideo.status === "processing";
         if (isStalledTranscribe(nextVideo)) {
+          const stalledError = "This run got stuck while reading video metadata. Please start it again.";
           await supabase
             .from("videos")
             .update({
               status: "failed",
               stage: "failed",
-              error: "This run got stuck while reading video metadata. Please start it again.",
+              error: stalledError,
             })
             .eq("id", activeVideoId);
+          nextVideo = { ...nextVideo, status: "failed", stage: "failed", error: stalledError };
           isProcessing = false;
         }
         setVideo(nextVideo);
