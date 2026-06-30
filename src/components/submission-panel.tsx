@@ -156,11 +156,13 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
   })();
 
   return (
-    <div className="glass-card rounded-2xl p-6 sm:p-8">
-      <div className="mb-6 flex items-center justify-between">
+    <div className="paper-card p-6 sm:p-10">
+      <div className="mb-8 flex items-end justify-between border-b border-[color:var(--color-ink)]/10 pb-5">
         <div>
-          <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-primary">step 01</p>
-          <h2 className="mt-1 font-display text-2xl font-semibold">Submit your video</h2>
+          <p className="eyebrow">Step 01 · Source</p>
+          <h2 className="mt-2 font-display text-4xl italic leading-none text-[color:var(--color-ink)]">
+            Source Submission
+          </h2>
         </div>
       </div>
 
