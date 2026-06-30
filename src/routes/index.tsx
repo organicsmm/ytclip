@@ -87,8 +87,8 @@ function Dashboard() {
 
       // Stalled. Try auto-retry if we can.
       window.clearInterval(check);
-        const restart = restartRef.current ?? (() => resumeRealPipelineFromStoredSource(video.id));
-      if (!restart || retryCountRef.current >= MAX_AUTO_RETRIES) {
+      const restart = restartRef.current ?? (() => resumeRealPipelineFromStoredSource(video.id));
+      if (retryCountRef.current >= MAX_AUTO_RETRIES) {
         const msg = `Pipeline stalled after ${MAX_AUTO_RETRIES} auto-retries. Please start it again.`;
         await supabase
           .from("videos")

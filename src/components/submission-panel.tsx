@@ -164,7 +164,7 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
 
   const handleSubmit = async () => {
     // Pre-flight quota check (no increment) — block early if exhausted,
-    // but only charge AFTER the job has been successfully created.
+    // but only charge AFTER the clips finish successfully.
     try {
       const q = await fetchQuota();
       setQuota(q);
