@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
-import { Link2, Upload, Sparkles, Loader2, AlertTriangle, ExternalLink, ArrowRight } from "lucide-react";
+import { Link2, Upload, Loader2, AlertTriangle, ExternalLink, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 import { startRealPipeline } from "@/lib/real-pipeline";
 import type { PipelineConfig } from "@/lib/autocliper-types";
@@ -22,6 +22,9 @@ import {
   parseYouTubeId,
   firstError,
 } from "@/lib/validation";
+import { useServerFn } from "@tanstack/react-start";
+import { getQuota, consumeVideoQuota, type Quota } from "@/lib/billing.functions";
+import { UpgradeModal } from "@/components/upgrade-modal";
 
 interface JobStartPayload {
   videoId: string;
@@ -45,6 +48,23 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
   const [clipCount, setClipCount] = useState(5);
   const [submitting, setSubmitting] = useState(false);
   const [ytError, setYtError] = useState<string | null>(null);
+  const [quota, setQuota] = useState<Quota | null>(null);
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
+  const fetchQuota = useServerFn(getQuota);
+  const consumeQuota = useServerFn(consumeVideoQuota);
+
+  const refreshQuota = async () => {
+    try {
+      const q = await fetchQuota();
+      setQuota(q);
+    } catch (e) {
+      console.warn("[quota] failed to load", e);
+    }
+  };
+  useEffect(() => {
+    void refreshQuota();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const fetchYouTube = async (): Promise<{ file: File; title: string }> => {
     setYtStatus("Resolving YouTube video…");
@@ -141,6 +161,25 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
   };
 
   const handleSubmit = async () => {
+    // Quota check BEFORE any heavy work (download, ffmpeg, etc.)
+    try {
+      const result = await consumeQuota();
+      if (!result.allowed) {
+        setQuota((q) =>
+          q ? { ...q, used: result.used, monthly_limit: result.monthly_limit } : q,
+        );
+        setUpgradeOpen(true);
+        return;
+      }
+      setQuota((q) =>
+        q ? { ...q, used: result.used, monthly_limit: result.monthly_limit } : q,
+      );
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Couldn't verify your plan";
+      toast.error(message);
+      return;
+    }
+
     setSubmitting(true);
     setYtError(null);
     try {
@@ -209,8 +248,18 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
 
   const ytVideoId = parseYouTubeId(ytUrl) ?? "";
 
+  const usagePct = quota ? Math.min(100, (quota.used / Math.max(1, quota.monthly_limit)) * 100) : 0;
+  const quotaExhausted = quota ? quota.used >= quota.monthly_limit : false;
+
   return (
     <div className="paper-card p-6 sm:p-10">
+      <UpgradeModal
+        open={upgradeOpen}
+        onOpenChange={setUpgradeOpen}
+        used={quota?.used ?? 0}
+        monthlyLimit={quota?.monthly_limit ?? 0}
+        plan={quota?.plan ?? "free"}
+      />
       <div className="mb-8 flex items-end justify-between border-b border-[color:var(--color-ink)]/10 pb-5">
         <div>
           <p className="eyebrow">Step 01 · Source</p>
@@ -218,6 +267,29 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
             Source Submission
           </h2>
         </div>
+        {quota && (
+          <button
+            onClick={() => setUpgradeOpen(true)}
+            className="text-right transition-opacity hover:opacity-80"
+            type="button"
+          >
+            <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-foreground/55">
+              {quota.plan} plan
+            </p>
+            <p className="mt-1 font-mono text-sm tabular-nums">
+              <span className={quotaExhausted ? "text-destructive font-semibold" : "text-foreground"}>
+                {quota.used}
+              </span>
+              <span className="text-foreground/40"> / {quota.monthly_limit} videos</span>
+            </p>
+            <div className="mt-1 h-1 w-32 overflow-hidden rounded-full bg-[color:var(--color-ink)]/10">
+              <div
+                className={`h-full ${quotaExhausted ? "bg-destructive" : "bg-primary"}`}
+                style={{ width: `${usagePct}%` }}
+              />
+            </div>
+          </button>
+        )}
       </div>
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as "youtube" | "upload")}>
