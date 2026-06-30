@@ -33,7 +33,6 @@ function Dashboard() {
     if (savedVideoId) setActiveVideoId(savedVideoId);
   }, []);
 
-  // Subscribe to the active video + its clips
   useEffect(() => {
     if (!activeVideoId) return;
     let cancelled = false;
@@ -96,19 +95,21 @@ function Dashboard() {
   };
 
   return (
-    <main className="mx-auto max-w-7xl px-6 py-10">
+    <main className="mx-auto max-w-7xl px-6 py-12 md:px-12">
       <Hero />
 
-      <section className="mt-12 grid gap-6 lg:grid-cols-5">
-        <div className="lg:col-span-3">
+      <section className="mt-10 grid grid-cols-1 gap-4 md:grid-cols-12">
+        <div className="md:col-span-8">
           <SubmissionPanel
             onJobStarted={handleJobStarted}
             onPreStageChange={setPreStage}
             disabled={video?.status === "processing"}
           />
         </div>
-        <div className="flex flex-col gap-6 lg:col-span-2">
+        <div className="md:col-span-4">
           <PipelineStages video={video} preStage={preStage} />
+        </div>
+        <div className="md:col-span-12">
           <PipelineTerminal video={video} />
         </div>
       </section>
@@ -116,6 +117,13 @@ function Dashboard() {
       <section className="mt-12">
         <ClipsGrid video={video} clips={clips} />
       </section>
+
+      <footer className="mt-20 flex flex-col gap-2 border-t border-[color:var(--color-ink)]/10 pt-6 text-[10px] uppercase tracking-[0.28em] text-foreground/45 md:flex-row md:items-center md:justify-between">
+        <span className="font-mono">© MMXXVI · Skate Artificial Intelligence</span>
+        <span className="font-display text-sm italic normal-case tracking-normal text-foreground/55">
+          Refinement Variant 04
+        </span>
+      </footer>
     </main>
   );
 }
