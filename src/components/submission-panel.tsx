@@ -49,7 +49,9 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
   const fetchYouTube = async (): Promise<{ file: File; title: string }> => {
     setYtStatus("Resolving YouTube video…");
     onPreStageChange?.({ kind: "resolving" });
-    const resolveRes = await fetch(`/api/public/yt-resolve?url=${encodeURIComponent(ytUrl)}`);
+    const resolveRes = await fetch(`/api/public/yt-resolve?url=${encodeURIComponent(ytUrl)}`, {
+      cache: "no-store",
+    });
     const meta = (await resolveRes.json().catch(() => ({}))) as {
       videoId?: string;
       title?: string;
