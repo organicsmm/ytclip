@@ -36,6 +36,7 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
 
   const fetchYouTube = async (): Promise<{ file: File; title: string }> => {
     setYtStatus("Resolving YouTube video…");
+    onPreStageChange?.({ kind: "resolving" });
     const resolveRes = await fetch(`/api/public/yt-resolve?url=${encodeURIComponent(ytUrl)}`);
     if (!resolveRes.ok) {
       const body = await resolveRes.json().catch(() => ({}));
@@ -48,13 +49,37 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
       durationSec: number;
     };
     setYtStatus(`Downloading "${meta.title}"…`);
+    onPreStageChange?.({ kind: "downloading", loaded: 0, total: 0 });
     const proxied = `/api/public/yt-proxy?u=${encodeURIComponent(meta.streamUrl)}`;
     const dl = await fetch(proxied);
-    if (!dl.ok) throw new Error(`Download failed (${dl.status})`);
-    const blob = await dl.blob();
+    if (!dl.ok || !dl.body) throw new Error(`Download failed (${dl.status})`);
+
+    const total = Number(dl.headers.get("content-length") ?? 0);
+    const reader = dl.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let loaded = 0;
+    let lastTick = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      loaded += value.byteLength;
+      const now = Date.now();
+      if (now - lastTick > 150) {
+        lastTick = now;
+        const pctTxt = total
+          ? ` (${Math.round((loaded / total) * 100)}%)`
+          : "";
+        setYtStatus(`Downloading "${meta.title}"…${pctTxt}`);
+        onPreStageChange?.({ kind: "downloading", loaded, total });
+      }
+    }
+    onPreStageChange?.({ kind: "downloading", loaded, total });
+    const blob = new Blob(chunks as BlobPart[], { type: meta.mimeType || "video/mp4" });
     const safeName = meta.title.replace(/[^\w\s-]/g, "").slice(0, 60) || "youtube-video";
     const file = new File([blob], `${safeName}.mp4`, { type: meta.mimeType || "video/mp4" });
     setYtStatus(null);
+    onPreStageChange?.({ kind: "uploading" });
     return { file, title: meta.title };
   };
 
