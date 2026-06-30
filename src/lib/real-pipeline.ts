@@ -23,6 +23,48 @@ interface StartParams {
 
 const MAX_RENDER_CLIP_SECONDS = 25;
 
+export async function muxAudioVideoToMp4(
+  videoBlob: Blob,
+  audioBlob: Blob,
+  onLog?: (msg: string) => void,
+): Promise<Blob> {
+  const ff = await getFFmpeg(onLog);
+  const vBuf = new Uint8Array(await videoBlob.arrayBuffer());
+  const aBuf = new Uint8Array(await audioBlob.arrayBuffer());
+  await ff.writeFile("in_v.mp4", vBuf);
+  await ff.writeFile("in_a.mp4", aBuf);
+  // Try stream copy first (fastest). Fall back to re-encoding audio if needed.
+  let code = await ff.exec([
+    "-i", "in_v.mp4",
+    "-i", "in_a.mp4",
+    "-c", "copy",
+    "-movflags", "+faststart",
+    "-shortest",
+    "out.mp4",
+  ]);
+  if (code !== 0) {
+    code = await ff.exec([
+      "-i", "in_v.mp4",
+      "-i", "in_a.mp4",
+      "-c:v", "copy",
+      "-c:a", "aac",
+      "-b:a", "128k",
+      "-movflags", "+faststart",
+      "-shortest",
+      "out.mp4",
+    ]);
+  }
+  if (code !== 0) throw new Error("Failed to mux audio + video");
+  const out = await ff.readFile("out.mp4");
+  const bytes = typeof out === "string" ? new TextEncoder().encode(out) : out;
+  try {
+    await ff.deleteFile("in_v.mp4");
+    await ff.deleteFile("in_a.mp4");
+    await ff.deleteFile("out.mp4");
+  } catch { /* noop */ }
+  return new Blob([bytes as BlobPart], { type: "video/mp4" });
+}
+
 let ffmpegSingleton: FFmpeg | null = null;
 async function getFFmpeg(onLog?: (msg: string) => void): Promise<FFmpeg> {
   if (ffmpegSingleton) return ffmpegSingleton;
