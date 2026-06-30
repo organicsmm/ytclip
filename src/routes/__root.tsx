@@ -13,6 +13,7 @@ import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { Toaster } from "@/components/ui/sonner";
 import { AppHeader } from "@/components/app-header";
+import { ensureSessionUser } from "@/lib/session";
 
 function NotFoundComponent() {
   return (
@@ -124,6 +125,12 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+
+  useEffect(() => {
+    void ensureSessionUser().catch((err) => {
+      console.error("[auth] anonymous sign-in failed", err);
+    });
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>

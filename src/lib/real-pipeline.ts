@@ -10,6 +10,7 @@
 import { FFmpeg } from "@ffmpeg/ffmpeg";
 import { fetchFile, toBlobURL } from "@ffmpeg/util";
 import { supabase } from "@/integrations/supabase/client";
+import { ensureSessionUser } from "@/lib/session";
 import { generateClipSuggestions } from "@/lib/ai.functions";
 import type { PipelineConfig, VideoStage } from "@/lib/skate-types";
 
@@ -48,10 +49,14 @@ async function getFFmpeg(onLog?: (msg: string) => void): Promise<FFmpeg> {
 }
 
 export async function startRealPipeline(params: StartParams): Promise<string> {
-  // 1. Insert video row
+  // 0. Make sure we have an auth session — RLS scopes every row to the user.
+  const user = await ensureSessionUser();
+
+  // 1. Insert video row owned by this user
   const { data: inserted, error: insertErr } = await supabase
     .from("videos")
     .insert({
+      user_id: user.id,
       title: params.title,
       source_url: null,
       source_type: "upload",
@@ -67,7 +72,7 @@ export async function startRealPipeline(params: StartParams): Promise<string> {
   const videoId = inserted.id;
 
   // fire and forget
-  runPipeline(videoId, params).catch(async (err) => {
+  runPipeline(videoId, user.id, params).catch(async (err) => {
     console.error("[pipeline] failed", err);
     await supabase
       .from("videos")
@@ -82,7 +87,7 @@ export async function startRealPipeline(params: StartParams): Promise<string> {
   return videoId;
 }
 
-async function runPipeline(videoId: string, params: StartParams) {
+async function runPipeline(videoId: string, userId: string, params: StartParams) {
   const log: string[] = ["[INIT] Skate pipeline starting…"];
   const push = async (
     line: string,
@@ -105,7 +110,7 @@ async function runPipeline(videoId: string, params: StartParams) {
     progress: 5,
   });
   const ext = params.file.name.split(".").pop() || "mp4";
-  const sourceKey = `${videoId}/source.${ext}`;
+  const sourceKey = `${userId}/${videoId}/source.${ext}`;
   const { error: upErr } = await supabase.storage
     .from("uploads")
     .upload(sourceKey, params.file, { upsert: true, contentType: params.file.type || "video/mp4" });
@@ -190,7 +195,7 @@ async function runPipeline(videoId: string, params: StartParams) {
 
     const fileData = (await ff.readFile(outName)) as Uint8Array;
     const blob = new Blob([fileData as BlobPart], { type: "video/mp4" });
-    const clipKey = `${videoId}/clip_${i}.mp4`;
+    const clipKey = `${userId}/${videoId}/clip_${i}.mp4`;
     const { error: clipUpErr } = await supabase.storage
       .from("clips")
       .upload(clipKey, blob, { upsert: true, contentType: "video/mp4" });
@@ -201,6 +206,7 @@ async function runPipeline(videoId: string, params: StartParams) {
       .createSignedUrl(clipKey, 60 * 60 * 24 * 7);
 
     await supabase.from("clips").insert({
+      user_id: userId,
       video_id: videoId,
       title: c.title,
       hook: c.hook,
