@@ -156,15 +156,7 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
     onPreStageChange?.({ kind: "idle" });
   };
 
-  const ytVideoId = (() => {
-    try {
-      const u = new URL(ytUrl);
-      if (u.hostname.includes("youtu.be")) return u.pathname.slice(1).split("/")[0] || "";
-      return u.searchParams.get("v") ?? "";
-    } catch {
-      return "";
-    }
-  })();
+  const ytVideoId = parseYouTubeId(ytUrl) ?? "";
 
   return (
     <div className="paper-card p-6 sm:p-10">
