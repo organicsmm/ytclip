@@ -130,7 +130,7 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
         }
       }
 
-      const videoId = await startRealPipeline({
+      const startParams = {
         file: sourceFile!,
         title,
         clipCount,
@@ -139,9 +139,13 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
           subtitle_style: subStyle,
           face_tracking: faceTracking,
         },
-      });
+      };
+      const videoId = await startRealPipeline(startParams);
 
-      onJobStarted(videoId);
+      onJobStarted({
+        videoId,
+        restart: () => startRealPipeline(startParams),
+      });
       toast.success("Pipeline started", {
         description: "ffmpeg.wasm is rendering your clips locally.",
       });
