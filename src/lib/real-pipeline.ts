@@ -21,6 +21,8 @@ interface StartParams {
   clipCount: number;
 }
 
+const MAX_RENDER_CLIP_SECONDS = 25;
+
 let ffmpegSingleton: FFmpeg | null = null;
 async function getFFmpeg(onLog?: (msg: string) => void): Promise<FFmpeg> {
   if (ffmpegSingleton) return ffmpegSingleton;
@@ -201,7 +203,8 @@ async function runPipeline(videoId: string, userId: string, params: StartParams)
     const c = suggestions[i];
     const outName = `clip_${i}.mp4`;
     const startStr = c.start_time.toString();
-    const durationSec = Math.max(1, c.end_time - c.start_time);
+    const effectiveEnd = Math.min(c.end_time, c.start_time + MAX_RENDER_CLIP_SECONDS);
+    const durationSec = Math.max(1, effectiveEnd - c.start_time);
     const dur = durationSec.toString();
 
     await push(`   rendering ${i + 1}/${suggestions.length} · ${c.title.slice(0, 40)}…`);
@@ -340,7 +343,7 @@ async function runPipeline(videoId: string, userId: string, params: StartParams)
       hook: c.hook,
       hashtags: c.hashtags,
       start_time: c.start_time,
-      end_time: c.end_time,
+      end_time: effectiveEnd,
       score: c.score,
       aspect_ratio: params.config.aspect_ratio,
       video_url: signed?.signedUrl ?? null,
