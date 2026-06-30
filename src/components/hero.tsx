@@ -1,38 +1,27 @@
-import { Zap, Wand2, Scissors } from "lucide-react";
-
 export function Hero() {
   return (
-    <div className="relative overflow-hidden rounded-3xl glass-card px-8 py-12 sm:px-12 sm:py-16">
-      <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-primary/20 blur-3xl" />
-      <div className="absolute -bottom-24 -left-16 h-72 w-72 rounded-full bg-primary-glow/15 blur-3xl" />
-
-      <div className="relative">
-        <div className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.25em] text-primary">
-          <Zap className="h-3 w-3" /> ai-powered · cloud rendered
+    <section className="border-b border-[color:var(--color-ink)]/10 pb-10">
+      <div className="grid gap-10 md:grid-cols-12 md:items-end">
+        <div className="md:col-span-8">
+          <p className="eyebrow">Issue 04 · Vertical Storytelling</p>
+          <h1 className="mt-4 font-display text-[64px] leading-[0.95] tracking-tight text-[color:var(--color-ink)] sm:text-[84px] md:text-[112px]">
+            From long-form depth
+            <br />
+            to <span className="italic">vertical impact.</span>
+          </h1>
         </div>
-        <h1 className="mt-5 max-w-3xl font-display text-5xl font-bold leading-[1.05] tracking-tight sm:text-6xl">
-          Turn long videos into <span className="text-gradient">scroll-stopping shorts</span>.
-        </h1>
-        <p className="mt-5 max-w-2xl text-lg text-muted-foreground">
-          Drop a YouTube link or upload a file. Skate AI transcribes it, ranks the most engaging
-          moments, crops to vertical, and burns in animated subtitles — ready to post.
-        </p>
-
-        <div className="mt-8 flex flex-wrap gap-6 text-xs text-muted-foreground">
-          <Feature Icon={Wand2} label="AI-ranked hooks" />
-          <Feature Icon={Scissors} label="Auto 9:16 crop" />
-          <Feature Icon={Zap} label="Burned-in subtitles" />
+        <div className="md:col-span-4">
+          <p className="max-w-sm text-base leading-relaxed text-foreground/75 md:text-[17px]">
+            Paste a link or upload a file. Skate AI transcribes, ranks the most engaging moments,
+            crops to vertical, and burns in animated subtitles — ready to post.
+          </p>
+          <div className="mt-6 flex flex-wrap gap-x-6 gap-y-2 font-mono text-[10px] uppercase tracking-[0.22em] text-foreground/55">
+            <span>01 · AI-ranked hooks</span>
+            <span>02 · Auto 9:16 crop</span>
+            <span>03 · Burned-in subtitles</span>
+          </div>
         </div>
       </div>
-    </div>
-  );
-}
-
-function Feature({ Icon, label }: { Icon: typeof Zap; label: string }) {
-  return (
-    <span className="flex items-center gap-2">
-      <Icon className="h-4 w-4 text-primary" />
-      <span className="font-medium text-foreground">{label}</span>
-    </span>
+    </section>
   );
 }
