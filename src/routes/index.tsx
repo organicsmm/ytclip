@@ -51,6 +51,8 @@ function Dashboard() {
       notifiedFailureRef.current = null;
     }
   }, [video]);
+
+  useEffect(() => {
     const savedVideoId = window.localStorage.getItem("autocliper-active-video-id");
     if (savedVideoId) setActiveVideoId(savedVideoId);
   }, []);
