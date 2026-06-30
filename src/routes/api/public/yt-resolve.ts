@@ -35,17 +35,24 @@ export const Route = createFileRoute("/api/public/yt-resolve")({
           });
           const info = await yt.getBasicInfo(videoId);
 
-          // Pick the best progressive (audio+video) mp4 stream
-          const formats = info.streaming_data?.formats ?? [];
-          const progressive = formats
-            .filter((f) => (f.mime_type || "").toLowerCase().includes("mp4"))
-            .sort((a, b) => (b.height ?? 0) - (a.height ?? 0));
+          // Try progressive (audio+video) first — modern videos rarely have these above 360p
+          let chosen: { url?: string; mime_type?: string; height?: number; decipher?: (p: unknown) => string | Promise<string> } | undefined;
+          try {
+            chosen = info.chooseFormat({
+              type: "video+audio",
+              quality: "best",
+              format: "mp4",
+            }) as typeof chosen;
+          } catch {
+            // Fallback: best video-only mp4 (browser will lack audio — acceptable)
+            const formats = info.streaming_data?.adaptive_formats ?? [];
+            chosen = formats
+              .filter((f) => (f.mime_type || "").toLowerCase().includes("video/mp4"))
+              .sort((a, b) => (b.height ?? 0) - (a.height ?? 0))[0] as typeof chosen;
+          }
 
-          let chosen = progressive[0];
           let streamUrl = chosen?.url ?? "";
-
-          // Some formats need decipher — youtubei.js handles it via decipher()
-          if (chosen && !streamUrl) {
+          if (chosen && !streamUrl && chosen.decipher) {
             try {
               streamUrl = await chosen.decipher(yt.session.player);
             } catch {
@@ -57,7 +64,7 @@ export const Route = createFileRoute("/api/public/yt-resolve")({
             return Response.json(
               {
                 error:
-                  "No progressive mp4 stream available for this video (it may be live, age-restricted, or members-only).",
+                  "No playable mp4 stream available for this video (it may be live, age-restricted, or members-only).",
               },
               { status: 502 },
             );
