@@ -27,6 +27,51 @@ const PLAN_COPY = {
   pro: { name: "Pro", price: 20, icon: Zap },
 } as const;
 
+function formatDate(iso: string): string {
+  try {
+    return new Date(iso).toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+  } catch {
+    return iso;
+  }
+}
+
+function formatRelative(iso: string): string {
+  const ms = new Date(iso).getTime() - Date.now();
+  if (Number.isNaN(ms)) return "—";
+  const days = Math.round(ms / 86_400_000);
+  if (days < -1) return `${Math.abs(days)} days ago`;
+  if (days === -1) return "Yesterday";
+  if (days === 0) return "Today";
+  if (days === 1) return "Tomorrow";
+  if (days < 30) return `${days} days`;
+  const months = Math.round(days / 30);
+  return months === 1 ? "1 month" : `${months} months`;
+}
+
+const STATUS_STYLES: Record<string, string> = {
+  active: "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+  trialing: "border-blue-500/40 bg-blue-500/10 text-blue-700 dark:text-blue-300",
+  past_due: "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+  paused: "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+  canceled: "border-destructive/40 bg-destructive/10 text-destructive",
+  cancelled: "border-destructive/40 bg-destructive/10 text-destructive",
+};
+
+function StatusBadge({ status }: { status: string }) {
+  const cls = STATUS_STYLES[status] ?? "border-border bg-surface/60 text-foreground";
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.18em] ${cls}`}
+    >
+      {status.replace(/_/g, " ")}
+    </span>
+  );
+}
+
 function BillingPage() {
   const fetchQuota = useServerFn(getQuota);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
@@ -130,9 +175,14 @@ function BillingPage() {
               <p className="mt-1 text-sm text-muted-foreground">
                 ${planInfo.price}/month · {data.monthly_limit} videos per month
               </p>
-              <p className="mt-2 font-mono text-[11px] uppercase tracking-wider text-foreground/55">
-                Status: <span className="text-foreground">{data.status}</span>
-              </p>
+              <div className="mt-3 flex items-center gap-2">
+                <StatusBadge status={data.status} />
+                {data.paddle_subscription_id && (
+                  <span className="font-mono text-[10px] uppercase tracking-wider text-foreground/40">
+                    · sub {data.paddle_subscription_id.slice(0, 10)}…
+                  </span>
+                )}
+              </div>
             </div>
           </div>
           <Button
@@ -142,6 +192,26 @@ function BillingPage() {
             {isPaid ? "Change plan" : "Upgrade"}
           </Button>
         </div>
+
+        {isPaid && data.current_period_end && (
+          <div className="mt-6 grid gap-3 rounded-xl border border-border/60 bg-surface/40 p-4 sm:grid-cols-2">
+            <div>
+              <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-foreground/55">
+                {data.status === "canceled" || data.status === "cancelled"
+                  ? "Access ends"
+                  : "Next billing date"}
+              </p>
+              <p className="mt-1 text-sm font-medium">{formatDate(data.current_period_end)}</p>
+            </div>
+            <div>
+              <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-foreground/55">
+                Renews in
+              </p>
+              <p className="mt-1 text-sm font-medium">{formatRelative(data.current_period_end)}</p>
+            </div>
+          </div>
+        )}
+
 
         <div className="mt-8 border-t border-border/60 pt-6">
           <div className="flex items-baseline justify-between">
