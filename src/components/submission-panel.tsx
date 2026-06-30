@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
-import { Link2, Upload, Sparkles, Loader2 } from "lucide-react";
+import { Link2, Upload, Sparkles, Loader2, AlertTriangle, ExternalLink, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 import { startRealPipeline } from "@/lib/real-pipeline";
 import type { PipelineConfig } from "@/lib/skate-types";
