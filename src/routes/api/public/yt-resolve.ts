@@ -1,11 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-
-const PIPED_INSTANCES = [
-  "https://pipedapi.kavin.rocks",
-  "https://pipedapi.adminforge.de",
-  "https://api.piped.private.coffee",
-  "https://pipedapi.reallyaweso.me",
-];
+import { Innertube, UniversalCache } from "youtubei.js/cf-worker";
 
 function extractVideoId(input: string): string | null {
   try {
@@ -24,41 +18,6 @@ function extractVideoId(input: string): string | null {
   return null;
 }
 
-interface PipedStream {
-  url: string;
-  mimeType: string;
-  videoOnly: boolean;
-  quality: string;
-  format: string;
-  bitrate?: number;
-  height?: number;
-}
-
-interface PipedResponse {
-  title: string;
-  duration: number;
-  videoStreams: PipedStream[];
-}
-
-async function fetchFromPiped(videoId: string): Promise<PipedResponse> {
-  let lastErr: unknown;
-  for (const base of PIPED_INSTANCES) {
-    try {
-      const res = await fetch(`${base}/streams/${videoId}`, {
-        headers: { Accept: "application/json" },
-      });
-      if (!res.ok) {
-        lastErr = new Error(`${base} returned ${res.status}`);
-        continue;
-      }
-      return (await res.json()) as PipedResponse;
-    } catch (e) {
-      lastErr = e;
-    }
-  }
-  throw new Error(`All Piped instances failed: ${String(lastErr)}`);
-}
-
 export const Route = createFileRoute("/api/public/yt-resolve")({
   server: {
     handlers: {
@@ -69,27 +28,54 @@ export const Route = createFileRoute("/api/public/yt-resolve")({
         if (!videoId) {
           return Response.json({ error: "Invalid YouTube URL" }, { status: 400 });
         }
+
         try {
-          const data = await fetchFromPiped(videoId);
-          // Prefer progressive mp4 (videoOnly=false, has audio) at moderate quality
-          const progressive = data.videoStreams
-            .filter((s) => !s.videoOnly && s.format?.toLowerCase().includes("mp4"))
+          const yt = await Innertube.create({
+            cache: new UniversalCache(false),
+            generate_session_locally: true,
+          });
+          const info = await yt.getBasicInfo(videoId);
+
+          // Pick the best progressive (audio+video) mp4 stream
+          const formats = info.streaming_data?.formats ?? [];
+          const progressive = formats
+            .filter((f) => (f.mime_type || "").toLowerCase().includes("mp4"))
             .sort((a, b) => (b.height ?? 0) - (a.height ?? 0));
-          const chosen = progressive[0] ?? data.videoStreams.find((s) => !s.videoOnly);
-          if (!chosen) {
-            return Response.json({ error: "No progressive stream available" }, { status: 502 });
+
+          let chosen = progressive[0];
+          let streamUrl = chosen?.url ?? "";
+
+          // Some formats need decipher — youtubei.js handles it via decipher()
+          if (chosen && !streamUrl) {
+            try {
+              streamUrl = chosen.decipher(yt.session.player);
+            } catch {
+              /* fall through */
+            }
           }
+
+          if (!chosen || !streamUrl) {
+            return Response.json(
+              {
+                error:
+                  "No progressive mp4 stream available for this video (it may be live, age-restricted, or members-only).",
+              },
+              { status: 502 },
+            );
+          }
+
           return Response.json({
             videoId,
-            title: data.title,
-            durationSec: data.duration,
-            streamUrl: chosen.url,
-            mimeType: chosen.mimeType || "video/mp4",
-            quality: chosen.quality,
+            title: info.basic_info.title ?? "YouTube video",
+            durationSec: info.basic_info.duration ?? 0,
+            streamUrl,
+            mimeType: chosen.mime_type?.split(";")[0] || "video/mp4",
+            quality: `${chosen.height ?? "?"}p`,
           });
         } catch (e) {
+          const msg = e instanceof Error ? e.message : "Failed to resolve";
           return Response.json(
-            { error: e instanceof Error ? e.message : "Failed to resolve" },
+            { error: `InnerTube error: ${msg}` },
             { status: 502 },
           );
         }
