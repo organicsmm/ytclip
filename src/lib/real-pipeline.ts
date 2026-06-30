@@ -25,19 +25,27 @@ async function getFFmpeg(onLog?: (msg: string) => void): Promise<FFmpeg> {
   if (ffmpegSingleton) return ffmpegSingleton;
   const ff = new FFmpeg();
   ff.on("log", ({ message }) => onLog?.(message));
-  const baseURL = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd";
-  try {
-    await ff.load({
-      coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, "text/javascript"),
-      wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, "application/wasm"),
-    });
-  } catch (e) {
-    const fallback = "https://unpkg.com/@ffmpeg/core@0.12.10/dist/umd";
-    await ff.load({
-      coreURL: await toBlobURL(`${fallback}/ffmpeg-core.js`, "text/javascript"),
-      wasmURL: await toBlobURL(`${fallback}/ffmpeg-core.wasm`, "application/wasm"),
-    });
+  const cdns = [
+    "https://cdn.jsdelivr.net/npm/@ffmpeg",
+    "https://unpkg.com/@ffmpeg",
+  ];
+  let lastErr: unknown;
+  for (const cdn of cdns) {
+    try {
+      const coreBase = `${cdn}/core@0.12.10/dist/umd`;
+      const ffmpegBase = `${cdn}/ffmpeg@0.12.10/dist/umd`;
+      await ff.load({
+        coreURL: await toBlobURL(`${coreBase}/ffmpeg-core.js`, "text/javascript"),
+        wasmURL: await toBlobURL(`${coreBase}/ffmpeg-core.wasm`, "application/wasm"),
+        classWorkerURL: await toBlobURL(`${ffmpegBase}/814.ffmpeg.js`, "text/javascript"),
+      });
+      lastErr = null;
+      break;
+    } catch (e) {
+      lastErr = e;
+    }
   }
+  if (lastErr) throw lastErr;
   ffmpegSingleton = ff;
   return ff;
 }
