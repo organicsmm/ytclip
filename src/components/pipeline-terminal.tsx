@@ -50,10 +50,10 @@ export function PipelineTerminal({ video }: Props) {
       >
         {!video ? (
           <div className="flex h-full flex-col items-center justify-center text-center text-muted-foreground">
-            <span className="font-mono text-[11px] uppercase tracking-[0.3em] text-primary">
-              awaiting input
+            <span className="font-mono text-[10px] uppercase tracking-[0.28em] text-emerald-400">
+              Awaiting Input
             </span>
-            <p className="mt-3 max-w-xs text-sm">
+            <p className="mt-3 max-w-xs text-sm text-[#e8e4dd]/55">
               Submit a video to stream live progress here.
             </p>
           </div>
@@ -61,18 +61,18 @@ export function PipelineTerminal({ video }: Props) {
           <>
             {lines.map((line, i) => (
               <div key={i} className="flex gap-3">
-                <span className="select-none text-muted-foreground/40">
+                <span className="select-none text-[#e8e4dd]/30">
                   {String(i + 1).padStart(3, "0")}
                 </span>
-                <span className="flex-1 whitespace-pre-wrap text-foreground/90">{line}</span>
+                <span className="flex-1 whitespace-pre-wrap text-[#e8e4dd]/90">{line}</span>
               </div>
             ))}
             {video.status === "processing" && (
               <div className="mt-2 flex gap-3">
-                <span className="select-none text-muted-foreground/40">
+                <span className="select-none text-[#e8e4dd]/30">
                   {String(lines.length + 1).padStart(3, "0")}
                 </span>
-                <span className="text-primary">
+                <span className="text-emerald-400">
                   <span className="pulse-dot inline-block">▋</span>
                 </span>
               </div>
@@ -82,24 +82,24 @@ export function PipelineTerminal({ video }: Props) {
       </div>
 
       {video && (
-        <div className="border-t border-border/60 bg-surface/40 px-5 py-3">
+        <div className="border-t border-[#e8e4dd]/15 px-6 py-3">
           <div className="flex items-center justify-between text-xs">
-            <span className="font-mono text-muted-foreground">
+            <span className="font-mono text-[#e8e4dd]/55">
               progress · {Math.round(video.progress)}%
             </span>
             <span
-              className={`font-mono uppercase tracking-wider ${
+              className={`font-mono uppercase tracking-[0.22em] ${
                 video.status === "completed"
-                  ? "text-success"
+                  ? "text-emerald-400"
                   : video.status === "failed"
-                    ? "text-destructive"
-                    : "text-warning"
+                    ? "text-red-400"
+                    : "text-amber-400"
               }`}
             >
               {video.status}
             </span>
           </div>
-          <Progress value={video.progress} className="mt-2 h-1.5 bg-surface" />
+          <Progress value={video.progress} className="mt-2 h-1 rounded-none bg-[#e8e4dd]/15" />
         </div>
       )}
     </div>
