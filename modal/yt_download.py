@@ -41,10 +41,14 @@ APP_NAME = "autocliper-yt"
 image = (
     modal.Image.debian_slim(python_version="3.12")
     .apt_install("ffmpeg")
-    # Pin the current yt-dlp release so Modal's image hash changes on updates;
-    # otherwise an unpinned dependency can stay cached across deploys.
-    .pip_install("yt-dlp==2026.6.9", "fastapi[standard]==0.115.0")
+    # Use yt-dlp nightly — YouTube changes extractors weekly, stable releases lag.
+    .pip_install(
+        "yt-dlp[default] @ https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp.tar.gz",
+        "fastapi[standard]==0.115.0",
+        force_build=False,
+    )
 )
+
 
 volume = modal.Volume.from_name("yt-cache", create_if_missing=True)
 app = modal.App(APP_NAME)
