@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Innertube, UniversalCache } from "youtubei.js/cf-worker";
+import { Innertube } from "youtubei.js/cf-worker";
 
 function extractVideoId(input: string): string | null {
   try {
