@@ -41,10 +41,14 @@ APP_NAME = "autocliper-yt"
 image = (
     modal.Image.debian_slim(python_version="3.12")
     .apt_install("ffmpeg")
-    # Pin the current yt-dlp release so Modal's image hash changes on updates;
-    # otherwise an unpinned dependency can stay cached across deploys.
-    .pip_install("yt-dlp==2026.6.9", "fastapi[standard]==0.115.0")
+    # Use yt-dlp nightly — YouTube changes extractors weekly, stable releases lag.
+    .pip_install(
+        "yt-dlp[default] @ https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp.tar.gz",
+        "fastapi[standard]==0.115.0",
+        force_build=False,
+    )
 )
+
 
 volume = modal.Volume.from_name("yt-cache", create_if_missing=True)
 app = modal.App(APP_NAME)
@@ -119,13 +123,15 @@ def download(video_id: str) -> dict:
         "retries": 5,
         "fragment_retries": 5,
         "extractor_retries": 3,
-        # Bot-bypass: prefer mobile/web clients that don't require sign-in.
+        # Bot-bypass: tv_embedded + web_safari work best without cookies right now.
+        # mweb is currently broken for many videos (returns 500 from googlevideo).
         "extractor_args": {
             "youtube": {
-                "player_client": ["mweb", "web_safari", "android", "ios"],
-                "player_skip": ["configs"],
+                "player_client": ["tv_embedded", "web_safari", "ios", "android"],
+                "player_skip": ["configs", "webpage"],
             }
         },
+
         "http_headers": {
             "User-Agent": (
                 "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) "
