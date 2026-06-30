@@ -29,18 +29,16 @@ export function PipelineTerminal({ video }: Props) {
   const lines = video?.log_lines ?? [];
 
   return (
-    <div className="glass-card flex h-full min-h-[420px] flex-col overflow-hidden rounded-2xl">
-      <div className="flex items-center justify-between border-b border-border/60 bg-surface/40 px-5 py-3">
-        <div className="flex items-center gap-2">
-          <div className="flex gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-full bg-destructive/70" />
-            <span className="h-2.5 w-2.5 rounded-full bg-warning/70" />
-            <span className="h-2.5 w-2.5 rounded-full bg-success/70" />
-          </div>
-          <span className="ml-3 font-mono text-xs text-muted-foreground">skate-pipeline.log</span>
+    <div className="flex h-full min-h-[320px] flex-col overflow-hidden bg-[#0d0d0d] text-[#e8e4dd]">
+      <div className="flex items-center justify-between border-b border-[#e8e4dd]/15 px-6 py-3">
+        <div className="flex items-center gap-3">
+          <span className="font-mono text-[10px] uppercase tracking-[0.28em] text-[#e8e4dd]/50">
+            System Log
+          </span>
+          <span className="font-mono text-[10px] text-[#e8e4dd]/30">0x4f2a · skate-pipeline.log</span>
         </div>
         {video && (
-          <span className="font-mono text-[10px] uppercase tracking-wider text-primary">
+          <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-emerald-400">
             {STAGE_LABEL[video.stage] ?? video.stage}
           </span>
         )}
