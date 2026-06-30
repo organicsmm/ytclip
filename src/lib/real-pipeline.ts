@@ -435,13 +435,39 @@ async function runPipeline(
     .from("videos")
     .update({ status: "completed", stage: "completed", progress: 100, log_lines: log })
     .eq("id", videoId);
+  await chargeQuotaOnce(videoId, params.config);
+  deleteCachedPipelineSource(videoId).catch(() => undefined);
+}
+
+async function chargeQuotaOnce(videoId: string, config: PipelineConfig) {
+  const chargedKey = `autocliper-quota-charged-${videoId}`;
+  if (window.localStorage.getItem(chargedKey) === "1") return;
+
+  const { data } = await supabase
+    .from("videos")
+    .select("config")
+    .eq("id", videoId)
+    .single();
+  const storedConfig = (data?.config ?? {}) as PipelineConfig & {
+    clip_count?: number;
+    quota_charged?: boolean;
+  };
+  if (storedConfig.quota_charged) {
+    window.localStorage.setItem(chargedKey, "1");
+    return;
+  }
+
   try {
     await consumeVideoQuota();
+    window.localStorage.setItem(chargedKey, "1");
+    await supabase
+      .from("videos")
+      .update({ config: { ...storedConfig, ...config, quota_charged: true } as never })
+      .eq("id", videoId);
     window.dispatchEvent(new CustomEvent("autocliper-quota-changed"));
   } catch (e) {
     console.warn("[quota] failed to record usage after successful generation", e);
   }
-  deleteCachedPipelineSource(videoId).catch(() => undefined);
 }
 
 type CachedPipelineSource = StartParams & { id: string; createdAt: number };
