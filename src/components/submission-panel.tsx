@@ -102,8 +102,9 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
       let title = file?.name.replace(/\.[^.]+$/, "") ?? "";
 
       if (tab === "youtube") {
-        if (!ytUrl.trim()) {
-          toast.error("Paste a YouTube URL first");
+        const parsed = youtubeUrlSchema.safeParse(ytUrl);
+        if (!parsed.success) {
+          toast.error(firstError(parsed.error));
           return;
         }
         try {
@@ -113,11 +114,15 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
         } catch (e) {
           const message = e instanceof Error ? e.message : "YouTube fetch failed";
           setYtError(message);
+          toast.error("Couldn't fetch that YouTube video", { description: message });
           return;
         }
-      } else if (!sourceFile) {
-        toast.error("Choose a video file to upload");
-        return;
+      } else {
+        const parsed = videoFileSchema.safeParse(sourceFile);
+        if (!parsed.success) {
+          toast.error(firstError(parsed.error));
+          return;
+        }
       }
 
       const videoId = await startRealPipeline({
