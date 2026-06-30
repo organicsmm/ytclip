@@ -173,7 +173,7 @@ export const Route = createFileRoute("/api/public/yt-resolve")({
         if (modalResult && "ok" in modalResult) return Response.json(modalResult.ok);
         const modalErr = modalResult && "err" in modalResult ? modalResult.err : "Modal not configured";
 
-        return Response.json({ error: modalErr }, { status: 502 });
+        return Response.json({ error: modalErr });
       },
     },
   },
