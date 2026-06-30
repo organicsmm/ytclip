@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { SubmissionPanel } from "@/components/submission-panel";
 import { PipelineTerminal } from "@/components/pipeline-terminal";
+import { PipelineStages, type PreStage } from "@/components/pipeline-stages";
 import { ClipsGrid } from "@/components/clips-grid";
 import { Hero } from "@/components/hero";
 import { supabase } from "@/integrations/supabase/client";
@@ -25,6 +26,7 @@ function Dashboard() {
   const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
   const [video, setVideo] = useState<VideoRow | null>(null);
   const [clips, setClips] = useState<ClipRow[]>([]);
+  const [preStage, setPreStage] = useState<PreStage>({ kind: "idle" });
 
   useEffect(() => {
     const savedVideoId = window.localStorage.getItem("skate-active-video-id");
@@ -89,6 +91,7 @@ function Dashboard() {
     window.localStorage.setItem("skate-active-video-id", videoId);
     setClips([]);
     setVideo(null);
+    setPreStage({ kind: "idle" });
     setActiveVideoId(videoId);
   };
 
@@ -98,9 +101,14 @@ function Dashboard() {
 
       <section className="mt-12 grid gap-6 lg:grid-cols-5">
         <div className="lg:col-span-3">
-          <SubmissionPanel onJobStarted={handleJobStarted} disabled={video?.status === "processing"} />
+          <SubmissionPanel
+            onJobStarted={handleJobStarted}
+            onPreStageChange={setPreStage}
+            disabled={video?.status === "processing"}
+          />
         </div>
-        <div className="lg:col-span-2">
+        <div className="flex flex-col gap-6 lg:col-span-2">
+          <PipelineStages video={video} preStage={preStage} />
           <PipelineTerminal video={video} />
         </div>
       </section>
