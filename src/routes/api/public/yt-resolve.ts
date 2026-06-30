@@ -255,14 +255,15 @@ export const Route = createFileRoute("/api/public/yt-resolve")({
 
         const cleanYtUrlEarly = `https://www.youtube.com/watch?v=${videoId}`;
         // Modal is primary — Apify disabled.
-        const modalFirst = await resolveWithModal(videoId, cleanYtUrlEarly);
-        if (modalFirst) return Response.json(modalFirst);
+        const modalResult = await resolveWithModal(videoId, cleanYtUrlEarly);
+        if (modalResult && "ok" in modalResult) return Response.json(modalResult.ok);
+        const modalErr = modalResult && "err" in modalResult ? modalResult.err : "Modal not configured";
 
         // If Modal fails, try RapidAPI as last resort.
         const rapidLast = await resolveWithRapidApi(videoId, cleanYtUrlEarly, await fetchTitle(cleanYtUrlEarly));
         if (rapidLast) return Response.json(rapidLast);
 
-        return Response.json({ error: "Modal resolver failed and no fallback available." });
+        return Response.json({ error: modalErr }, { status: 502 });
       },
     },
   },
