@@ -39,15 +39,16 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
     setYtStatus("Resolving YouTube video…");
     onPreStageChange?.({ kind: "resolving" });
     const resolveRes = await fetch(`/api/public/yt-resolve?url=${encodeURIComponent(ytUrl)}`);
-    if (!resolveRes.ok) {
-      const body = await resolveRes.json().catch(() => ({}));
-      throw new Error(body.error || `Resolve failed (${resolveRes.status})`);
+    const meta = (await resolveRes.json().catch(() => ({}))) as {
+      title?: string;
+      streamUrl?: string;
+      mimeType?: string;
+      durationSec?: number;
+      error?: string;
+    };
+    if (!resolveRes.ok || meta.error || !meta.streamUrl) {
+      throw new Error(meta.error || `Resolve failed (${resolveRes.status})`);
     }
-    const meta = (await resolveRes.json()) as {
-      title: string;
-      streamUrl: string;
-      mimeType: string;
-      durationSec: number;
     };
     setYtStatus(`Downloading "${meta.title}"…`);
     onPreStageChange?.({ kind: "downloading", loaded: 0, total: 0 });
