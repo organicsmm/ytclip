@@ -25,6 +25,7 @@ export type Database = {
           score: number
           start_time: number
           title: string
+          user_id: string | null
           video_id: string
           video_url: string | null
         }
@@ -38,6 +39,7 @@ export type Database = {
           score?: number
           start_time: number
           title: string
+          user_id?: string | null
           video_id: string
           video_url?: string | null
         }
@@ -51,6 +53,7 @@ export type Database = {
           score?: number
           start_time?: number
           title?: string
+          user_id?: string | null
           video_id?: string
           video_url?: string | null
         }
@@ -78,6 +81,7 @@ export type Database = {
           status: string
           title: string
           updated_at: string
+          user_id: string | null
         }
         Insert: {
           config?: Json
@@ -92,6 +96,7 @@ export type Database = {
           status?: string
           title?: string
           updated_at?: string
+          user_id?: string | null
         }
         Update: {
           config?: Json
@@ -106,6 +111,7 @@ export type Database = {
           status?: string
           title?: string
           updated_at?: string
+          user_id?: string | null
         }
         Relationships: []
       }
