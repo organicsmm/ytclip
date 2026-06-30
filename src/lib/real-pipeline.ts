@@ -72,7 +72,7 @@ export async function startRealPipeline(params: StartParams): Promise<string> {
   const videoId = inserted.id;
 
   // fire and forget
-  runPipeline(videoId, params).catch(async (err) => {
+  runPipeline(videoId, user.id, params).catch(async (err) => {
     console.error("[pipeline] failed", err);
     await supabase
       .from("videos")
@@ -87,7 +87,7 @@ export async function startRealPipeline(params: StartParams): Promise<string> {
   return videoId;
 }
 
-async function runPipeline(videoId: string, params: StartParams) {
+async function runPipeline(videoId: string, userId: string, params: StartParams) {
   const log: string[] = ["[INIT] Skate pipeline starting…"];
   const push = async (
     line: string,
