@@ -246,7 +246,6 @@ async function runPipeline(videoId: string, userId: string, params: StartParams)
 
     const buildFastCutArgs = (): string[] => [
       "-hide_banner",
-      "-noaccurate_seek",
       "-ss",
       startStr,
       "-i",
@@ -256,11 +255,22 @@ async function runPipeline(videoId: string, userId: string, params: StartParams)
       "-map",
       "0:v:0",
       "-map",
-      "0:a:0?",
+      "0:a?",
       "-sn",
       "-dn",
-      "-c",
+      "-c:v",
       "copy",
+      // Force re-encode of audio to AAC so the output MP4 always carries a
+      // playable audio stream (some sources have audio codecs MP4 can't mux,
+      // and `-c copy` silently drops them).
+      "-c:a",
+      "aac",
+      "-b:a",
+      "128k",
+      "-ac",
+      "2",
+      "-ar",
+      "44100",
       "-movflags",
       "+faststart",
       "-avoid_negative_ts",
@@ -268,6 +278,7 @@ async function runPipeline(videoId: string, userId: string, params: StartParams)
       "-y",
       outName,
     ];
+
 
     let blob: Blob | null = null;
     let usedPlan = "browser recorder";
