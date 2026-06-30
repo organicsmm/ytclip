@@ -35,6 +35,27 @@ type ApifyItem = {
   thumbnail?: Array<{ url?: string }>;
 };
 
+type RapidApiVideo = {
+  url?: string;
+  metadata?: {
+    height?: number;
+    has_audio?: boolean;
+    has_video?: boolean;
+    mime_type?: string;
+  };
+};
+
+type ResolvePayload = {
+  videoId: string;
+  title: string;
+  durationSec: number;
+  streamUrl: string;
+  mimeType: string;
+  quality: string;
+  thumbnail?: string;
+  source: "apify" | "rapidapi";
+};
+
 async function hmacHex(value: string, secret: string): Promise<string> {
   const enc = new TextEncoder();
   const key = await crypto.subtle.importKey(
@@ -76,6 +97,68 @@ async function fetchTitle(cleanYtUrl: string): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+function pickRapidApiVideo(videos: RapidApiVideo[]): RapidApiVideo | undefined {
+  return [...videos].sort((a, b) => {
+    const aMuxed = a.metadata?.has_audio && a.metadata?.has_video ? 1 : 0;
+    const bMuxed = b.metadata?.has_audio && b.metadata?.has_video ? 1 : 0;
+    if (aMuxed !== bMuxed) return bMuxed - aMuxed;
+    const aHeight = a.metadata?.height ?? 0;
+    const bHeight = b.metadata?.height ?? 0;
+    const aPenalty = aHeight > 720 ? 1 : 0;
+    const bPenalty = bHeight > 720 ? 1 : 0;
+    if (aPenalty !== bPenalty) return aPenalty - bPenalty;
+    return bHeight - aHeight;
+  })[0];
+}
+
+async function resolveWithRapidApi(
+  videoId: string,
+  cleanYtUrl: string,
+  fallbackTitle: string | null,
+): Promise<ResolvePayload | null> {
+  const apiKey = process.env.RAPIDAPI_KEY;
+  if (!apiKey) return null;
+
+  const res = await fetch(
+    `https://social-media-video-downloader.p.rapidapi.com/youtube/v3/video/details?videoId=${encodeURIComponent(videoId)}&urlAccess=normal&renderableFormats=720p%2C360p%2Chighres&getTranscript=false`,
+    {
+      headers: {
+        "x-rapidapi-key": apiKey,
+        "x-rapidapi-host": "social-media-video-downloader.p.rapidapi.com",
+      },
+    },
+  );
+
+  if (!res.ok) return null;
+
+  const data = (await res.json()) as {
+    title?: string;
+    duration?: string | number;
+    lengthSeconds?: string | number;
+    thumbnail?: string;
+    thumbnails?: Array<{ url?: string }>;
+    contents?: Array<{ videos?: RapidApiVideo[] }>;
+  };
+  const videos = data.contents?.flatMap((content) => content.videos ?? []) ?? [];
+  const chosen = pickRapidApiVideo(videos);
+  if (!chosen?.url) return null;
+
+  const durationRaw = data.lengthSeconds ?? data.duration ?? 0;
+  const durationSec = typeof durationRaw === "string" ? Number(durationRaw) || 0 : durationRaw;
+  const thumbnail = data.thumbnail ?? data.thumbnails?.[data.thumbnails.length - 1]?.url;
+
+  return {
+    videoId,
+    title: data.title ?? fallbackTitle ?? "YouTube video",
+    durationSec,
+    streamUrl: `/api/public/yt-proxy?id=${encodeURIComponent(videoId)}`,
+    mimeType: chosen.metadata?.mime_type?.split(";")[0] || "video/mp4",
+    quality: chosen.metadata?.height ? `${chosen.metadata.height}p` : "auto",
+    thumbnail,
+    source: "rapidapi",
+  };
 }
 
 export const Route = createFileRoute("/api/public/yt-resolve")({
@@ -143,7 +226,11 @@ export const Route = createFileRoute("/api/public/yt-resolve")({
             ),
           ]).then(([titleResult, apifyResult]) => [apifyResult, titleResult] as const);
 
+          const rapidFallback = () => resolveWithRapidApi(videoId, cleanYtUrl, title);
+
           if (!res.ok) {
+            const fallback = await rapidFallback();
+            if (fallback) return Response.json(fallback);
             const body = await res.text().catch(() => "");
             return Response.json({
               error: `Apify call failed (${res.status}). ${body.slice(0, 300)}`,
@@ -153,6 +240,8 @@ export const Route = createFileRoute("/api/public/yt-resolve")({
           const items = (await res.json()) as ApifyItem[];
           const item = items?.[0];
           if (!item || item.status === "failed" || item.error) {
+            const fallback = await rapidFallback();
+            if (fallback) return Response.json(fallback);
             return Response.json({
               error: `Apify could not prepare this video. ${item?.error ?? JSON.stringify(item ?? items).slice(0, 300)}`,
             });
@@ -160,6 +249,8 @@ export const Route = createFileRoute("/api/public/yt-resolve")({
 
           const directUrl = item.downloadUrl || item.storageUrl;
           if (!directUrl || !isAllowedMediaUrl(directUrl)) {
+            const fallback = await rapidFallback();
+            if (fallback) return Response.json(fallback);
             return Response.json({
               error: `Apify returned no downloadable MP4. Got: ${JSON.stringify(item ?? items).slice(0, 300)}`,
             });
@@ -180,8 +271,11 @@ export const Route = createFileRoute("/api/public/yt-resolve")({
             mimeType: item.contentType?.split(";")[0] || "video/mp4",
             quality: "360p",
             thumbnail: item.thumbnail?.[item.thumbnail.length - 1]?.url,
+            source: "apify",
           });
         } catch (e) {
+          const fallback = await resolveWithRapidApi(videoId, cleanYtUrl, await fetchTitle(cleanYtUrl));
+          if (fallback) return Response.json(fallback);
           const msg = e instanceof Error ? e.message : "Failed to resolve";
           return Response.json({ error: `Resolver error: ${msg}` });
         }
