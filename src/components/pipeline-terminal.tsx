@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import type { VideoRow } from "@/lib/skate-types";
+import type { VideoRow } from "@/lib/autocliper-types";
 import { Progress } from "@/components/ui/progress";
 
 interface Props {
@@ -35,7 +35,7 @@ export function PipelineTerminal({ video }: Props) {
           <span className="font-mono text-[10px] uppercase tracking-[0.28em] text-[#e8e4dd]/50">
             System Log
           </span>
-          <span className="font-mono text-[10px] text-[#e8e4dd]/30">0x4f2a · skate-pipeline.log</span>
+          <span className="font-mono text-[10px] text-[#e8e4dd]/30">0x4f2a · autocliper-pipeline.log</span>
         </div>
         {video && (
           <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-emerald-400">

@@ -3,15 +3,15 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Clock, Video as VideoIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import type { VideoRow } from "@/lib/skate-types";
+import type { VideoRow } from "@/lib/autocliper-types";
 
 export const Route = createFileRoute("/history")({
   head: () => ({
     meta: [
-      { title: "History — Skate AI" },
+      { title: "History — AutoCliper" },
       {
         name: "description",
-        content: "Browse your past Skate AI runs and reload generated viral shorts in one click.",
+        content: "Browse your past AutoCliper runs and reload generated viral shorts in one click.",
       },
     ],
   }),
@@ -46,7 +46,7 @@ function HistoryPage() {
         <p className="font-mono text-xs uppercase tracking-[0.3em] text-primary">history.log</p>
         <h1 className="mt-2 text-4xl font-bold text-gradient">Past Runs</h1>
         <p className="mt-2 text-muted-foreground">
-          Every video you've pushed through the Skate pipeline. Click any run to reload its clips.
+          Every video you've pushed through the AutoCliper pipeline. Click any run to reload its clips.
         </p>
       </div>
 

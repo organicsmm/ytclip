@@ -12,7 +12,7 @@ import { fetchFile, toBlobURL } from "@ffmpeg/util";
 import { supabase } from "@/integrations/supabase/client";
 import { ensureSessionUser } from "@/lib/session";
 import { generateClipSuggestions } from "@/lib/ai.functions";
-import type { PipelineConfig, VideoStage } from "@/lib/skate-types";
+import type { PipelineConfig, VideoStage } from "@/lib/autocliper-types";
 
 interface StartParams {
   file: File;
@@ -63,7 +63,7 @@ export async function startRealPipeline(params: StartParams): Promise<string> {
       status: "processing",
       stage: "queued",
       progress: 0,
-      log_lines: ["[INIT] Skate pipeline starting…"],
+      log_lines: ["[INIT] AutoCliper pipeline starting…"],
       config: params.config as never,
     })
     .select("id")
@@ -88,7 +88,7 @@ export async function startRealPipeline(params: StartParams): Promise<string> {
 }
 
 async function runPipeline(videoId: string, userId: string, params: StartParams) {
-  const log: string[] = ["[INIT] Skate pipeline starting…"];
+  const log: string[] = ["[INIT] AutoCliper pipeline starting…"];
   const push = async (
     line: string,
     patch: { stage?: VideoStage; progress?: number } = {},

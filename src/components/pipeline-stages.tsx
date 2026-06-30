@@ -1,5 +1,5 @@
 import { Check, Loader2, Circle } from "lucide-react";
-import type { VideoRow } from "@/lib/skate-types";
+import type { VideoRow } from "@/lib/autocliper-types";
 
 export type PreStage =
   | { kind: "idle" }

@@ -25,7 +25,7 @@ export function AppHeader() {
       <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5 md:px-12">
         <Link to="/" className="flex items-baseline gap-3">
           <span className="font-display text-2xl italic leading-none text-[color:var(--color-ink)]">
-            Skate AI
+            AutoCliper
           </span>
           <span className="hidden font-mono text-[10px] uppercase tracking-[0.28em] text-foreground/45 md:inline">
             Vertical Edit Engine — v.04

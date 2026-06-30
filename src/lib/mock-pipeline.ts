@@ -7,7 +7,7 @@
  * shape and Realtime channels stay identical so the UI doesn't change.
  */
 import { supabase } from "@/integrations/supabase/client";
-import type { PipelineConfig, VideoStage } from "@/lib/skate-types";
+import type { PipelineConfig, VideoStage } from "@/lib/autocliper-types";
 
 interface StartParams {
   title: string;
@@ -69,7 +69,7 @@ export async function startMockPipeline(params: StartParams): Promise<string> {
       status: "processing",
       stage: "queued",
       progress: 0,
-      log_lines: ["[INIT] Skate pipeline starting…"],
+      log_lines: ["[INIT] AutoCliper pipeline starting…"],
       config: params.config as never,
     })
     .select("id")
@@ -91,7 +91,7 @@ export async function startMockPipeline(params: StartParams): Promise<string> {
 }
 
 async function runMockJob(videoId: string, params: StartParams) {
-  const log: string[] = ["[INIT] Skate pipeline starting…"];
+  const log: string[] = ["[INIT] AutoCliper pipeline starting…"];
   const append = async (line: string, patch: { stage?: VideoStage; progress?: number } = {}) => {
     log.push(line);
     await supabase
