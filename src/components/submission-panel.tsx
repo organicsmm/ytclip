@@ -161,6 +161,25 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
   };
 
   const handleSubmit = async () => {
+    // Quota check BEFORE any heavy work (download, ffmpeg, etc.)
+    try {
+      const result = await consumeQuota();
+      if (!result.allowed) {
+        setQuota((q) =>
+          q ? { ...q, used: result.used, monthly_limit: result.monthly_limit } : q,
+        );
+        setUpgradeOpen(true);
+        return;
+      }
+      setQuota((q) =>
+        q ? { ...q, used: result.used, monthly_limit: result.monthly_limit } : q,
+      );
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Couldn't verify your plan";
+      toast.error(message);
+      return;
+    }
+
     setSubmitting(true);
     setYtError(null);
     try {
