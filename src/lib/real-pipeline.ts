@@ -183,73 +183,141 @@ async function runPipeline(videoId: string, userId: string, params: StartParams)
     progress: 65,
   });
 
-  // 720p output renders ~2-3x faster than 1080p in ffmpeg.wasm and still looks
-  // crisp on TikTok/Reels/Shorts (which re-encode uploads anyway).
+  const setProgressOnly = async (progress: number) => {
+    await supabase
+      .from("videos")
+      .update({ progress })
+      .eq("id", videoId);
+  };
+
+  // Keep the browser render light. ffmpeg.wasm is CPU-bound, so 540x960 is far
+  // more reliable than 720x1280 while still being usable for Shorts/Reels.
   const cropFilter =
     params.config.aspect_ratio === "9:16"
-      ? "crop=ih*9/16:ih,scale=720:1280:flags=fast_bilinear"
-      : "crop=ih:ih,scale=720:720:flags=fast_bilinear";
+      ? "scale=540:960:force_original_aspect_ratio=increase:flags=fast_bilinear,crop=540:960,setsar=1"
+      : "scale=720:720:force_original_aspect_ratio=increase:flags=fast_bilinear,crop=720:720,setsar=1";
 
   for (let i = 0; i < suggestions.length; i++) {
     const c = suggestions[i];
     const outName = `clip_${i}.mp4`;
     const startStr = c.start_time.toString();
-    const dur = (c.end_time - c.start_time).toString();
+    const durationSec = Math.max(1, c.end_time - c.start_time);
+    const dur = durationSec.toString();
 
     await push(`   rendering ${i + 1}/${suggestions.length} · ${c.title.slice(0, 40)}…`);
 
-    const buildArgs = (audioCodec: "aac" | "copy"): string[] => [
+    const buildVerticalArgs = (audioCodec: "aac" | "copy", filter: string): string[] => [
+      "-hide_banner",
+      "-noaccurate_seek",
       "-ss",
       startStr,
       "-i",
       inputName,
       "-t",
       dur,
+      "-map",
+      "0:v:0",
+      "-map",
+      "0:a:0?",
+      "-sn",
+      "-dn",
       "-vf",
-      cropFilter,
+      filter,
+      "-r",
+      "24",
       "-c:v",
       "libx264",
       "-preset",
       "ultrafast",
-      "-tune",
-      "fastdecode,zerolatency",
       "-crf",
-      "30",
+      "34",
       "-pix_fmt",
       "yuv420p",
-      "-g",
-      "60",
       ...(audioCodec === "aac"
         ? ["-c:a", "aac", "-b:a", "96k", "-ac", "2"]
         : ["-c:a", "copy"]),
       "-movflags",
       "+faststart",
+      "-avoid_negative_ts",
+      "make_zero",
       "-threads",
-      "0",
+      "1",
       "-y",
       outName,
     ];
 
-    // Per-clip auto-retry: first try a normal render, then a longer-timeout
-    // fallback that copies the audio stream (much faster, avoids aac encode stalls).
+    const buildFastCutArgs = (): string[] => [
+      "-hide_banner",
+      "-noaccurate_seek",
+      "-ss",
+      startStr,
+      "-i",
+      inputName,
+      "-t",
+      dur,
+      "-map",
+      "0:v:0",
+      "-map",
+      "0:a:0?",
+      "-sn",
+      "-dn",
+      "-c",
+      "copy",
+      "-movflags",
+      "+faststart",
+      "-avoid_negative_ts",
+      "make_zero",
+      "-y",
+      outName,
+    ];
+
+    const compactFilter =
+      params.config.aspect_ratio === "9:16"
+        ? "scale=360:640:force_original_aspect_ratio=increase:flags=fast_bilinear,crop=360:640,setsar=1"
+        : "scale=480:480:force_original_aspect_ratio=increase:flags=fast_bilinear,crop=480:480,setsar=1";
+
+    const renderPlans = [
+      {
+        label: "vertical render",
+        args: buildVerticalArgs("copy", cropFilter),
+        timeoutMs: Math.max(360_000, Math.ceil(durationSec * 10_000)),
+      },
+      {
+        label: "compatibility render",
+        args: buildVerticalArgs("aac", compactFilter),
+        timeoutMs: Math.max(420_000, Math.ceil(durationSec * 12_000)),
+      },
+      {
+        label: "instant safe cut",
+        args: buildFastCutArgs(),
+        timeoutMs: 120_000,
+      },
+    ];
+
+    // Per-clip auto-retry ladder: vertical first, smaller compatibility render
+    // second, and finally a no-reencode cut so the pipeline still finishes.
     let exitCode = -1;
-    for (let attempt = 1; attempt <= 2; attempt++) {
-      const timeoutMs = attempt === 1 ? 480_000 : 720_000;
-      const args = buildArgs(attempt === 1 ? "aac" : "copy");
+    let usedPlan = renderPlans[0].label;
+    for (let attempt = 0; attempt < renderPlans.length; attempt++) {
+      const plan = renderPlans[attempt];
+      usedPlan = plan.label;
       try {
-        exitCode = await ff.exec(args, timeoutMs);
+        exitCode = await execWithProgress(ff, plan.args, plan.timeoutMs, durationSec, (ratio) => {
+          const pct = 65 + ((i + Math.min(0.98, ratio)) / suggestions.length) * 33;
+          void setProgressOnly(Math.min(98, Math.round(pct * 10) / 10));
+        });
       } catch (err) {
         exitCode = -1;
-        await push(`   ⚠️  clip ${i + 1} attempt ${attempt} errored: ${err instanceof Error ? err.message : String(err)}`);
+        await push(`   ⚠️  clip ${i + 1} ${plan.label} failed: ${err instanceof Error ? err.message : String(err)}`);
       }
       if (exitCode === 0) break;
-      if (attempt < 2) {
-        await push(`   ↻ clip ${i + 1} timed out, retrying with stream-copy audio…`);
+      if (attempt < renderPlans.length - 1) {
+        await push(`   ↻ clip ${i + 1} retrying with ${renderPlans[attempt + 1].label}…`);
         try { await ff.deleteFile(outName); } catch { /* ignore */ }
       }
     }
     if (exitCode !== 0) {
-      throw new Error(`Clip ${i + 1} render failed after 2 attempts`);
+      throw new Error(`Clip ${i + 1} render failed after ${renderPlans.length} attempts`);
     }
 
 
@@ -285,7 +353,7 @@ async function runPipeline(videoId: string, userId: string, params: StartParams)
     }
 
     const pct = 65 + Math.round(((i + 1) / suggestions.length) * 33);
-    await push(`   ✅ clip ${i + 1} uploaded`, { progress: pct });
+    await push(`   ✅ clip ${i + 1} uploaded (${usedPlan})`, { progress: pct });
   }
 
   await cleanupMountedInput(ff, mountPoint);
@@ -468,6 +536,36 @@ async function probeDurationWithFFmpeg(ff: FFmpeg, inputName: string): Promise<n
     ff.off("log", handler);
   }
   return dur;
+}
+
+async function execWithProgress(
+  ff: FFmpeg,
+  args: string[],
+  timeoutMs: number,
+  durationSec: number,
+  onProgress: (ratio: number) => void,
+): Promise<number> {
+  let lastTick = 0;
+  const handler = ({ progress, time }: { progress?: number; time?: number }) => {
+    const now = Date.now();
+    if (now - lastTick < 2500) return;
+    lastTick = now;
+
+    const byProgress = typeof progress === "number" && Number.isFinite(progress) ? progress : 0;
+    const byTime =
+      typeof time === "number" && Number.isFinite(time) && durationSec > 0
+        ? time / 1_000_000 / durationSec
+        : 0;
+    const ratio = Math.max(byProgress, byTime);
+    if (ratio > 0) onProgress(Math.max(0, Math.min(1, ratio)));
+  };
+
+  ff.on("progress", handler);
+  try {
+    return await ff.exec(args, timeoutMs);
+  } finally {
+    ff.off("progress", handler);
+  }
 }
 
 function fmtTime(sec: number): string {
