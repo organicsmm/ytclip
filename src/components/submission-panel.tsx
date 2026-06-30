@@ -16,6 +16,12 @@ import { toast } from "sonner";
 import { startRealPipeline } from "@/lib/real-pipeline";
 import type { PipelineConfig } from "@/lib/autocliper-types";
 import type { PreStage } from "@/components/pipeline-stages";
+import {
+  youtubeUrlSchema,
+  videoFileSchema,
+  parseYouTubeId,
+  firstError,
+} from "@/lib/validation";
 
 interface Props {
   onJobStarted: (videoId: string) => void;
@@ -96,8 +102,9 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
       let title = file?.name.replace(/\.[^.]+$/, "") ?? "";
 
       if (tab === "youtube") {
-        if (!ytUrl.trim()) {
-          toast.error("Paste a YouTube URL first");
+        const parsed = youtubeUrlSchema.safeParse(ytUrl);
+        if (!parsed.success) {
+          toast.error(firstError(parsed.error));
           return;
         }
         try {
@@ -107,11 +114,15 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
         } catch (e) {
           const message = e instanceof Error ? e.message : "YouTube fetch failed";
           setYtError(message);
+          toast.error("Couldn't fetch that YouTube video", { description: message });
           return;
         }
-      } else if (!sourceFile) {
-        toast.error("Choose a video file to upload");
-        return;
+      } else {
+        const parsed = videoFileSchema.safeParse(sourceFile);
+        if (!parsed.success) {
+          toast.error(firstError(parsed.error));
+          return;
+        }
       }
 
       const videoId = await startRealPipeline({
@@ -145,15 +156,7 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
     onPreStageChange?.({ kind: "idle" });
   };
 
-  const ytVideoId = (() => {
-    try {
-      const u = new URL(ytUrl);
-      if (u.hostname.includes("youtu.be")) return u.pathname.slice(1).split("/")[0] || "";
-      return u.searchParams.get("v") ?? "";
-    } catch {
-      return "";
-    }
-  })();
+  const ytVideoId = parseYouTubeId(ytUrl) ?? "";
 
   return (
     <div className="paper-card p-6 sm:p-10">
@@ -285,7 +288,19 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
             id="file"
             type="file"
             accept="video/*"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            onChange={(e) => {
+              const next = e.target.files?.[0] ?? null;
+              if (next) {
+                const parsed = videoFileSchema.safeParse(next);
+                if (!parsed.success) {
+                  toast.error(firstError(parsed.error));
+                  e.target.value = "";
+                  setFile(null);
+                  return;
+                }
+              }
+              setFile(next);
+            }}
             className="mt-2 h-12 cursor-pointer border-border bg-surface/60 file:mr-3 file:rounded-md file:border-0 file:bg-primary/20 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-foreground"
           />
         </TabsContent>
