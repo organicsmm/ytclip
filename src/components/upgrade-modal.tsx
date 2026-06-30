@@ -114,16 +114,21 @@ export function UpgradeModal({ open, onOpenChange, used, monthlyLimit, plan }: P
                   ))}
                 </ul>
                 <Button
-                  disabled={isCurrent}
+                  disabled={isCurrent || loadingPlan !== null}
                   className="btn-glow mt-5 h-11 w-full rounded-lg text-xs font-semibold uppercase tracking-[0.2em]"
-                  onClick={() => {
-                    // Paddle checkout will be wired here once test mode is enabled.
-                    window.alert(
-                      "Checkout coming soon — Paddle test mode needs to be enabled from chat.",
-                    );
-                  }}
+                  onClick={() => handleUpgrade(p.id)}
                 >
-                  {isCurrent ? "Current plan" : `Upgrade to ${p.name}`}
+                  {loadingPlan === p.id ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Opening…
+                    </>
+                  ) : isCurrent ? (
+                    "Current plan"
+                  ) : plan === "starter" && p.id === "pro" ? (
+                    "Upgrade to Pro"
+                  ) : (
+                    `Upgrade to ${p.name}`
+                  )}
                 </Button>
               </div>
             );
