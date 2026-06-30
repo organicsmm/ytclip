@@ -40,19 +40,20 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
     onPreStageChange?.({ kind: "resolving" });
     const resolveRes = await fetch(`/api/public/yt-resolve?url=${encodeURIComponent(ytUrl)}`);
     const meta = (await resolveRes.json().catch(() => ({}))) as {
+      videoId?: string;
       title?: string;
       streamUrl?: string;
       mimeType?: string;
       durationSec?: number;
       error?: string;
     };
-    if (!resolveRes.ok || meta.error || !meta.streamUrl) {
+    if (!resolveRes.ok || meta.error || !meta.videoId) {
       throw new Error(meta.error || `Resolve failed (${resolveRes.status})`);
     }
     const title = meta.title || "YouTube video";
     setYtStatus(`Downloading "${title}"…`);
     onPreStageChange?.({ kind: "downloading", loaded: 0, total: 0 });
-    const proxied = `/api/public/yt-proxy?u=${encodeURIComponent(meta.streamUrl)}`;
+    const proxied = `/api/public/yt-proxy?id=${encodeURIComponent(meta.videoId)}`;
     const dl = await fetch(proxied);
     if (!dl.ok || !dl.body) throw new Error(`Download failed (${dl.status})`);
 
