@@ -100,6 +100,14 @@ def download(video_id: str) -> dict:
     import yt_dlp  # type: ignore
 
     tmp_template = str(out_dir / "raw.%(ext)s")
+
+    # Optional cookies.txt mounted via Modal secret YT_COOKIES_TXT (Netscape format)
+    cookies_path = None
+    cookies_txt = os.environ.get("YT_COOKIES_TXT")
+    if cookies_txt:
+        cookies_path = str(out_dir / "cookies.txt")
+        Path(cookies_path).write_text(cookies_txt)
+
     ydl_opts = {
         "format": "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best[height<=720]",
         "outtmpl": tmp_template,
@@ -108,10 +116,32 @@ def download(video_id: str) -> dict:
         "noprogress": True,
         "no_warnings": True,
         "concurrent_fragment_downloads": 4,
+        "retries": 5,
+        "fragment_retries": 5,
+        "extractor_retries": 3,
+        # Bot-bypass: prefer mobile/web clients that don't require sign-in.
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["mweb", "web_safari", "android", "ios"],
+                "player_skip": ["configs"],
+            }
+        },
+        "http_headers": {
+            "User-Agent": (
+                "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) "
+                "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 "
+                "Mobile/15E148 Safari/604.1"
+            ),
+            "Accept-Language": "en-US,en;q=0.9",
+        },
+        "geo_bypass": True,
+        "nocheckcertificate": True,
         "postprocessors": [
             {"key": "FFmpegVideoConvertor", "preferedformat": "mp4"},
         ],
     }
+    if cookies_path:
+        ydl_opts["cookiefile"] = cookies_path
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(
