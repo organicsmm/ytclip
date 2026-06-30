@@ -50,6 +50,7 @@ type ResolvePayload = {
   title: string;
   durationSec: number;
   streamUrl: string;
+  audioUrl?: string;
   mimeType: string;
   quality: string;
   thumbnail?: string;
