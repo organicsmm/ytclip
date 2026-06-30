@@ -571,18 +571,53 @@ async function renderClipWithMediaRecorder(
   canvas.width = width;
   canvas.height = height;
   video.src = sourceUrl;
-  video.muted = true;
+  // Keep audible playback silent on the page, but DO NOT mute the element
+  // (muting drops audio tracks from captureStream on some browsers).
+  video.muted = false;
+  video.volume = 0;
   video.playsInline = true;
   video.preload = "auto";
+  video.crossOrigin = "anonymous";
+
+  let audioCtx: AudioContext | null = null;
+  let audioDest: MediaStreamAudioDestinationNode | null = null;
 
   try {
     await waitForVideoMetadata(video, 15_000);
     video.currentTime = Math.max(0, startSec);
     await waitForVideoSeek(video, 15_000);
 
-    const stream = canvas.captureStream(24);
+    const stream = canvas.captureStream(30);
+
+    // Route the video element's audio through WebAudio so it ends up in the
+    // recorded stream but never reaches the speakers.
+    try {
+      const AC: typeof AudioContext =
+        (window as unknown as { AudioContext: typeof AudioContext; webkitAudioContext?: typeof AudioContext }).AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (AC) {
+        audioCtx = new AC();
+        const source = audioCtx.createMediaElementSource(video);
+        audioDest = audioCtx.createMediaStreamDestination();
+        source.connect(audioDest);
+        // Intentionally NOT connecting to audioCtx.destination → silent on page.
+        for (const track of audioDest.stream.getAudioTracks()) {
+          stream.addTrack(track);
+        }
+      }
+    } catch {
+      // If WebAudio routing fails (e.g. CORS on remote src), fall back to
+      // captureStream() audio tracks directly.
+      try {
+        const vs = (video as HTMLVideoElement & { captureStream?: () => MediaStream }).captureStream?.();
+        if (vs) for (const t of vs.getAudioTracks()) stream.addTrack(t);
+      } catch {
+        /* video remains silent */
+      }
+    }
+
     const chunks: BlobPart[] = [];
-    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    const recorder = new MediaRecorder(stream, mimeType ? { mimeType, videoBitsPerSecond: 5_000_000, audioBitsPerSecond: 128_000 } : undefined);
     recorder.ondataavailable = (event) => {
       if (event.data.size > 0) chunks.push(event.data);
     };
@@ -613,6 +648,9 @@ async function renderClipWithMediaRecorder(
     });
 
     recorder.start(1000);
+    if (audioCtx && audioCtx.state === "suspended") {
+      try { await audioCtx.resume(); } catch { /* ignore */ }
+    }
     await video.play();
     draw();
 
@@ -641,8 +679,12 @@ async function renderClipWithMediaRecorder(
     video.pause();
     video.removeAttribute("src");
     URL.revokeObjectURL(sourceUrl);
+    if (audioCtx) {
+      try { await audioCtx.close(); } catch { /* ignore */ }
+    }
   }
 }
+
 
 function pickRecorderMimeType(): string {
   const options = [
