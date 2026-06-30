@@ -130,7 +130,7 @@ function RootComponent() {
       <div className="min-h-screen">
         <AppHeader />
         <Outlet />
-        <Toaster theme="dark" position="bottom-right" />
+        <Toaster theme="light" position="bottom-right" />
       </div>
     </QueryClientProvider>
   );
