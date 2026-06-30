@@ -49,10 +49,14 @@ async function getFFmpeg(onLog?: (msg: string) => void): Promise<FFmpeg> {
 }
 
 export async function startRealPipeline(params: StartParams): Promise<string> {
-  // 1. Insert video row
+  // 0. Make sure we have an auth session — RLS scopes every row to the user.
+  const user = await ensureSessionUser();
+
+  // 1. Insert video row owned by this user
   const { data: inserted, error: insertErr } = await supabase
     .from("videos")
     .insert({
+      user_id: user.id,
       title: params.title,
       source_url: null,
       source_type: "upload",
