@@ -27,6 +27,51 @@ const PLAN_COPY = {
   pro: { name: "Pro", price: 20, icon: Zap },
 } as const;
 
+function formatDate(iso: string): string {
+  try {
+    return new Date(iso).toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+  } catch {
+    return iso;
+  }
+}
+
+function formatRelative(iso: string): string {
+  const ms = new Date(iso).getTime() - Date.now();
+  if (Number.isNaN(ms)) return "—";
+  const days = Math.round(ms / 86_400_000);
+  if (days < -1) return `${Math.abs(days)} days ago`;
+  if (days === -1) return "Yesterday";
+  if (days === 0) return "Today";
+  if (days === 1) return "Tomorrow";
+  if (days < 30) return `${days} days`;
+  const months = Math.round(days / 30);
+  return months === 1 ? "1 month" : `${months} months`;
+}
+
+const STATUS_STYLES: Record<string, string> = {
+  active: "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+  trialing: "border-blue-500/40 bg-blue-500/10 text-blue-700 dark:text-blue-300",
+  past_due: "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+  paused: "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+  canceled: "border-destructive/40 bg-destructive/10 text-destructive",
+  cancelled: "border-destructive/40 bg-destructive/10 text-destructive",
+};
+
+function StatusBadge({ status }: { status: string }) {
+  const cls = STATUS_STYLES[status] ?? "border-border bg-surface/60 text-foreground";
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.18em] ${cls}`}
+    >
+      {status.replace(/_/g, " ")}
+    </span>
+  );
+}
+
 function BillingPage() {
   const fetchQuota = useServerFn(getQuota);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
