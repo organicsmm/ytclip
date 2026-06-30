@@ -23,7 +23,7 @@ interface Props {
   disabled?: boolean;
 }
 
-export function SubmissionPanel({ onJobStarted, disabled }: Props) {
+export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Props) {
   const [tab, setTab] = useState<"youtube" | "upload">("youtube");
   const [file, setFile] = useState<File | null>(null);
   const [ytUrl, setYtUrl] = useState("");
