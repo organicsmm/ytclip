@@ -30,12 +30,32 @@ const PLAN_COPY = {
 function BillingPage() {
   const fetchQuota = useServerFn(getQuota);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
+  const queryClient = useQueryClient();
 
   const { data, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ["quota"],
     queryFn: () => fetchQuota(),
     staleTime: 30_000,
   });
+
+  // Paddle redirects back here with ?checkout=success on completion.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("checkout") === "success") {
+      toast.success("Payment successful!", {
+        description: "Your plan is being activated. This may take a few seconds.",
+      });
+      // Webhook will update the subscription; poll a few times.
+      const poll = (delay: number) =>
+        setTimeout(() => queryClient.invalidateQueries({ queryKey: ["quota"] }), delay);
+      poll(1000);
+      poll(4000);
+      poll(10000);
+      const url = new URL(window.location.href);
+      url.searchParams.delete("checkout");
+      window.history.replaceState({}, "", url.toString());
+    }
+  }, [queryClient]);
 
   if (isLoading) {
     return (
