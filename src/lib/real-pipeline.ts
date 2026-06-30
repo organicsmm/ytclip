@@ -12,6 +12,7 @@ import { toBlobURL } from "@ffmpeg/util";
 import { supabase } from "@/integrations/supabase/client";
 import { ensureSessionUser } from "@/lib/session";
 import { generateClipSuggestions } from "@/lib/ai.functions";
+import { consumeVideoQuota } from "@/lib/billing.functions";
 import type { PipelineConfig, VideoStage } from "@/lib/autocliper-types";
 
 interface StartParams {
@@ -20,6 +21,13 @@ interface StartParams {
   config: PipelineConfig;
   clipCount: number;
 }
+
+type StoredVideoForResume = {
+  id: string;
+  title: string;
+  source_url: string | null;
+  config: PipelineConfig & { clip_count?: number };
+};
 
 const MAX_RENDER_CLIP_SECONDS = 25;
 
@@ -115,12 +123,16 @@ export async function startRealPipeline(params: StartParams): Promise<string> {
       stage: "queued",
       progress: 0,
       log_lines: ["[INIT] AutoCliper pipeline starting…"],
-      config: params.config as never,
+      config: { ...params.config, clip_count: params.clipCount } as never,
     })
     .select("id")
     .single();
   if (insertErr || !inserted) throw new Error(insertErr?.message ?? "Failed to create video row");
   const videoId = inserted.id;
+
+  cachePipelineSource(videoId, params).catch((err) => {
+    console.warn("[pipeline] source cache unavailable", err);
+  });
 
   // fire and forget
   runPipeline(videoId, user.id, params).catch(async (err) => {
@@ -138,7 +150,75 @@ export async function startRealPipeline(params: StartParams): Promise<string> {
   return videoId;
 }
 
-async function runPipeline(videoId: string, userId: string, params: StartParams) {
+export async function resumeRealPipelineFromStoredSource(videoId: string): Promise<string> {
+  const user = await ensureSessionUser();
+
+  const { data: row, error } = await supabase
+    .from("videos")
+    .select("id,title,source_url,config")
+    .eq("id", videoId)
+    .single();
+  if (error || !row) throw new Error(error?.message ?? "Pipeline row not found");
+
+  const video = row as unknown as StoredVideoForResume;
+  const cached = await readCachedPipelineSource(videoId).catch(() => null);
+  const config = cached?.config ?? video.config;
+  const clipCount = cached?.clipCount ?? Number(video.config?.clip_count ?? 5);
+  let file = cached?.file ?? null;
+
+  if (!file && video.source_url) {
+    const { data: blob, error: dlErr } = await supabase.storage
+      .from("uploads")
+      .download(video.source_url);
+    if (dlErr || !blob) throw new Error(`Could not reload uploaded source: ${dlErr?.message ?? "not found"}`);
+    const name = video.source_url.split("/").pop() || "source.mp4";
+    file = new File([blob], name, { type: blob.type || "video/mp4" });
+  }
+
+  if (!file) {
+    throw new Error("Source upload was interrupted. Please select the file again and start a new run.");
+  }
+
+  await supabase.from("clips").delete().eq("video_id", videoId);
+  await supabase
+    .from("videos")
+    .update({
+      status: "processing",
+      stage: "queued",
+      progress: 0,
+      error: null,
+      log_lines: ["[INIT] AutoCliper pipeline restarting from saved source…"],
+    })
+    .eq("id", videoId);
+
+  const params: StartParams = {
+    file,
+    title: cached?.title ?? video.title,
+    config,
+    clipCount: Math.min(Math.max(Number(clipCount) || 5, 1), 8),
+  };
+
+  runPipeline(videoId, user.id, params, { sourceKey: video.source_url ?? undefined }).catch(async (err) => {
+    console.error("[pipeline] resume failed", err);
+    await supabase
+      .from("videos")
+      .update({
+        status: "failed",
+        stage: "failed",
+        error: err instanceof Error ? err.message : String(err),
+      })
+      .eq("id", videoId);
+  });
+
+  return videoId;
+}
+
+async function runPipeline(
+  videoId: string,
+  userId: string,
+  params: StartParams,
+  options: { sourceKey?: string } = {},
+) {
   const log: string[] = ["[INIT] AutoCliper pipeline starting…"];
   const push = async (
     line: string,
@@ -161,12 +241,17 @@ async function runPipeline(videoId: string, userId: string, params: StartParams)
     progress: 5,
   });
   const ext = params.file.name.split(".").pop() || "mp4";
-  const sourceKey = `${userId}/${videoId}/source.${ext}`;
-  const { error: upErr } = await supabase.storage
-    .from("uploads")
-    .upload(sourceKey, params.file, { upsert: true, contentType: params.file.type || "video/mp4" });
-  if (upErr) throw new Error(`Upload failed: ${upErr.message}`);
-  await push("✅ Source uploaded to Lovable Cloud storage", { progress: 20 });
+  const sourceKey = options.sourceKey ?? `${userId}/${videoId}/source.${ext}`;
+  if (options.sourceKey) {
+    await push("✅ Source restored from Lovable Cloud storage", { progress: 20 });
+  } else {
+    const { error: upErr } = await supabase.storage
+      .from("uploads")
+      .upload(sourceKey, params.file, { upsert: true, contentType: params.file.type || "video/mp4" });
+    if (upErr) throw new Error(`Upload failed: ${upErr.message}`);
+    await supabase.from("videos").update({ source_url: sourceKey }).eq("id", videoId);
+    await push("✅ Source uploaded to Lovable Cloud storage", { progress: 20 });
+  }
 
   // 2. Load ffmpeg + probe duration. Mounting the File through WORKERFS avoids
   // copying large YouTube MP4s into wasm memory up front, which is where the UI
@@ -350,6 +435,92 @@ async function runPipeline(videoId: string, userId: string, params: StartParams)
     .from("videos")
     .update({ status: "completed", stage: "completed", progress: 100, log_lines: log })
     .eq("id", videoId);
+  await chargeQuotaOnce(videoId, params.config);
+  deleteCachedPipelineSource(videoId).catch(() => undefined);
+}
+
+async function chargeQuotaOnce(videoId: string, config: PipelineConfig) {
+  const chargedKey = `autocliper-quota-charged-${videoId}`;
+  if (window.localStorage.getItem(chargedKey) === "1") return;
+
+  const { data } = await supabase
+    .from("videos")
+    .select("config")
+    .eq("id", videoId)
+    .single();
+  const storedConfig = (data?.config ?? {}) as unknown as PipelineConfig & {
+    clip_count?: number;
+    quota_charged?: boolean;
+  };
+  if (storedConfig.quota_charged) {
+    window.localStorage.setItem(chargedKey, "1");
+    return;
+  }
+
+  try {
+    await consumeVideoQuota();
+    window.localStorage.setItem(chargedKey, "1");
+    await supabase
+      .from("videos")
+      .update({ config: { ...storedConfig, ...config, quota_charged: true } as never })
+      .eq("id", videoId);
+    window.dispatchEvent(new CustomEvent("autocliper-quota-changed"));
+  } catch (e) {
+    console.warn("[quota] failed to record usage after successful generation", e);
+  }
+}
+
+type CachedPipelineSource = StartParams & { id: string; createdAt: number };
+
+const SOURCE_CACHE_DB = "autocliper-source-cache";
+const SOURCE_CACHE_STORE = "sources";
+
+function openSourceCacheDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    if (typeof indexedDB === "undefined") {
+      reject(new Error("IndexedDB is unavailable"));
+      return;
+    }
+    const req = indexedDB.open(SOURCE_CACHE_DB, 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(SOURCE_CACHE_STORE)) {
+        db.createObjectStore(SOURCE_CACHE_STORE, { keyPath: "id" });
+      }
+    };
+    req.onerror = () => reject(req.error ?? new Error("Could not open source cache"));
+    req.onsuccess = () => resolve(req.result);
+  });
+}
+
+async function cachePipelineSource(videoId: string, params: StartParams): Promise<void> {
+  const db = await openSourceCacheDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(SOURCE_CACHE_STORE, "readwrite");
+    tx.objectStore(SOURCE_CACHE_STORE).put({ ...params, id: videoId, createdAt: Date.now() } satisfies CachedPipelineSource);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error ?? new Error("Could not cache source file"));
+  }).finally(() => db.close());
+}
+
+async function readCachedPipelineSource(videoId: string): Promise<CachedPipelineSource | null> {
+  const db = await openSourceCacheDb();
+  return await new Promise<CachedPipelineSource | null>((resolve, reject) => {
+    const tx = db.transaction(SOURCE_CACHE_STORE, "readonly");
+    const req = tx.objectStore(SOURCE_CACHE_STORE).get(videoId);
+    req.onsuccess = () => resolve((req.result as CachedPipelineSource | undefined) ?? null);
+    req.onerror = () => reject(req.error ?? new Error("Could not read source cache"));
+  }).finally(() => db.close());
+}
+
+async function deleteCachedPipelineSource(videoId: string): Promise<void> {
+  const db = await openSourceCacheDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(SOURCE_CACHE_STORE, "readwrite");
+    tx.objectStore(SOURCE_CACHE_STORE).delete(videoId);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error ?? new Error("Could not clear source cache"));
+  }).finally(() => db.close());
 }
 
 async function prepareMountedInput(ff: FFmpeg, mountPoint: string, name: string, file: File) {

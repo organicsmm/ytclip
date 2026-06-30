@@ -8,6 +8,7 @@ import { ClipsGrid } from "@/components/clips-grid";
 import { Hero } from "@/components/hero";
 import { supabase } from "@/integrations/supabase/client";
 import type { VideoRow, ClipRow } from "@/lib/autocliper-types";
+import { resumeRealPipelineFromStoredSource } from "@/lib/real-pipeline";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -23,7 +24,9 @@ export const Route = createFileRoute("/")({
   component: Dashboard,
 });
 
-const STALL_MS = 90_000;
+const DEFAULT_STALL_MS = 3 * 60_000;
+const UPLOAD_STALL_MS = 12 * 60_000;
+const TRANSCODE_STALL_MS = 8 * 60_000;
 const MAX_AUTO_RETRIES = 2;
 
 function Dashboard() {
@@ -81,16 +84,14 @@ function Dashboard() {
     const check = window.setInterval(async () => {
       const t = stallTrackerRef.current;
       if (!t || t.videoId !== video.id) return;
-      if (Date.now() - t.since < STALL_MS) return;
+      if (Date.now() - t.since < stallTimeoutForStage(video.stage, video.progress)) return;
       if (retryingRef.current) return;
 
       // Stalled. Try auto-retry if we can.
       window.clearInterval(check);
-      const restart = restartRef.current;
-      if (!restart || retryCountRef.current >= MAX_AUTO_RETRIES) {
-        const msg = !restart
-          ? "Pipeline stalled and the source file is no longer in memory. Please start it again."
-          : `Pipeline stalled after ${MAX_AUTO_RETRIES} auto-retries. Please start it again.`;
+      const restart = restartRef.current ?? (() => resumeRealPipelineFromStoredSource(video.id));
+      if (retryCountRef.current >= MAX_AUTO_RETRIES) {
+        const msg = `Pipeline stalled after ${MAX_AUTO_RETRIES} auto-retries. Please start it again.`;
         await supabase
           .from("videos")
           .update({ status: "failed", stage: "failed", error: msg })
@@ -147,6 +148,15 @@ function Dashboard() {
         .select("*")
         .eq("id", activeVideoId)
         .maybeSingle();
+      if (!cancelled && !v) {
+        window.localStorage.removeItem("autocliper-active-video-id");
+        setActiveVideoId(null);
+        setVideo(null);
+        setClips([]);
+        isProcessing = false;
+        return;
+      }
+
       if (!cancelled && v) {
         let nextVideo = v as unknown as VideoRow;
         isProcessing = nextVideo.status === "processing";
@@ -254,4 +264,10 @@ function isStalledTranscribe(video: VideoRow): boolean {
   const updatedAt = new Date(video.updated_at).getTime();
   if (!Number.isFinite(updatedAt)) return false;
   return Date.now() - updatedAt > 10 * 60 * 1000;
+}
+
+function stallTimeoutForStage(stage: VideoRow["stage"], progress: number): number {
+  if (stage === "downloading" || progress <= 20) return UPLOAD_STALL_MS;
+  if (stage === "transcribing") return TRANSCODE_STALL_MS;
+  return DEFAULT_STALL_MS;
 }
