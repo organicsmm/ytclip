@@ -246,86 +246,18 @@ export const Route = createFileRoute("/api/public/yt-resolve")({
           return Response.json({ error: "Invalid YouTube URL" }, { status: 400 });
         }
 
-        const apifyToken = process.env.APIFY_API_TOKEN;
-        if (!apifyToken) {
-          return Response.json({ error: "APIFY_API_TOKEN is not configured on the server." });
-        }
+        const cleanYtUrlEarly = `https://www.youtube.com/watch?v=${videoId}`;
+        // Modal is primary — Apify disabled.
+        const modalFirst = await resolveWithModal(videoId, cleanYtUrlEarly);
+        if (modalFirst) return Response.json(modalFirst);
 
-        const cleanYtUrl = `https://www.youtube.com/watch?v=${videoId}`;
+        // If Modal fails, try RapidAPI as last resort.
+        const rapidLast = await resolveWithRapidApi(videoId, cleanYtUrlEarly, await fetchTitle(cleanYtUrlEarly));
+        if (rapidLast) return Response.json(rapidLast);
 
-        try {
-          const [res, title] = await Promise.all([
-            fetchTitle(cleanYtUrl),
-            fetch(
-            `https://api.apify.com/v2/acts/api-ninja~youtube-video-downloader/run-sync-get-dataset-items?token=${encodeURIComponent(apifyToken)}&timeout=180`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ urls: [cleanYtUrl], format: "360", ttl: "none" }),
-            },
-            ),
-          ]).then(([titleResult, apifyResult]) => [apifyResult, titleResult] as const);
-
-          const rapidFallback = async () => {
-            const modal = await resolveWithModal(videoId, cleanYtUrl);
-            if (modal) return modal;
-            return resolveWithRapidApi(videoId, cleanYtUrl, title);
-          };
-
-          if (!res.ok) {
-            const fallback = await rapidFallback();
-            if (fallback) return Response.json(fallback);
-            const body = await res.text().catch(() => "");
-            return Response.json({
-              error: `Apify call failed (${res.status}). ${body.slice(0, 300)}`,
-            });
-          }
-
-          const items = (await res.json()) as ApifyItem[];
-          const item = items?.[0];
-          if (!item || item.status === "failed" || item.error) {
-            const fallback = await rapidFallback();
-            if (fallback) return Response.json(fallback);
-            return Response.json({
-              error: `Apify could not prepare this video. ${item?.error ?? JSON.stringify(item ?? items).slice(0, 300)}`,
-            });
-          }
-
-          const directUrl = item.downloadUrl || item.storageUrl;
-          if (!directUrl || !isAllowedMediaUrl(directUrl)) {
-            const fallback = await rapidFallback();
-            if (fallback) return Response.json(fallback);
-            return Response.json({
-              error: `Apify returned no downloadable MP4. Got: ${JSON.stringify(item ?? items).slice(0, 300)}`,
-            });
-          }
-          const sig = await hmacHex(directUrl, apifyToken);
-          const proxyUrl = `/api/public/yt-resolve?download=1&u=${encodeURIComponent(directUrl)}&sig=${sig}`;
-
-          const durationSec =
-            typeof item.lengthSeconds === "string"
-              ? Number(item.lengthSeconds) || 0
-              : item.lengthSeconds ?? 0;
-
-          return Response.json({
-            videoId,
-            title: item.title ?? title ?? "YouTube video",
-            durationSec,
-            streamUrl: proxyUrl,
-            mimeType: item.contentType?.split(";")[0] || "video/mp4",
-            quality: "360p",
-            thumbnail: item.thumbnail?.[item.thumbnail.length - 1]?.url,
-            source: "apify",
-          });
-        } catch (e) {
-          const modal = await resolveWithModal(videoId, cleanYtUrl);
-          if (modal) return Response.json(modal);
-          const fallback = await resolveWithRapidApi(videoId, cleanYtUrl, await fetchTitle(cleanYtUrl));
-          if (fallback) return Response.json(fallback);
-          const msg = e instanceof Error ? e.message : "Failed to resolve";
-          return Response.json({ error: `Resolver error: ${msg}` });
-        }
+        return Response.json({ error: "Modal resolver failed and no fallback available." });
       },
     },
   },
 });
+
