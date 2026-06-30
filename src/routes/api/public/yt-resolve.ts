@@ -70,13 +70,10 @@ export const Route = createFileRoute("/api/public/yt-resolve")({
           }
 
           if (!chosen || !streamUrl) {
-            return Response.json(
-              {
-                error:
-                  "No playable mp4 stream available for this video (it may be live, age-restricted, or members-only).",
-              },
-              { status: 502 },
-            );
+            return Response.json({
+              error:
+                "No playable mp4 stream available for this video (it may be live, age-restricted, or members-only).",
+            });
           }
 
           return Response.json({
