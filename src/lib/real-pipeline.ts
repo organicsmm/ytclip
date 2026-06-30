@@ -110,7 +110,7 @@ async function runPipeline(videoId: string, userId: string, params: StartParams)
     progress: 5,
   });
   const ext = params.file.name.split(".").pop() || "mp4";
-  const sourceKey = `${videoId}/source.${ext}`;
+  const sourceKey = `${userId}/${videoId}/source.${ext}`;
   const { error: upErr } = await supabase.storage
     .from("uploads")
     .upload(sourceKey, params.file, { upsert: true, contentType: params.file.type || "video/mp4" });
