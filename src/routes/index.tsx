@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { SubmissionPanel } from "@/components/submission-panel";
 import { PipelineTerminal } from "@/components/pipeline-terminal";
+import { PipelineStages, type PreStage } from "@/components/pipeline-stages";
 import { ClipsGrid } from "@/components/clips-grid";
 import { Hero } from "@/components/hero";
 import { supabase } from "@/integrations/supabase/client";
