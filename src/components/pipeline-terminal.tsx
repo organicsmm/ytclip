@@ -29,18 +29,16 @@ export function PipelineTerminal({ video }: Props) {
   const lines = video?.log_lines ?? [];
 
   return (
-    <div className="glass-card flex h-full min-h-[420px] flex-col overflow-hidden rounded-2xl">
-      <div className="flex items-center justify-between border-b border-border/60 bg-surface/40 px-5 py-3">
-        <div className="flex items-center gap-2">
-          <div className="flex gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-full bg-destructive/70" />
-            <span className="h-2.5 w-2.5 rounded-full bg-warning/70" />
-            <span className="h-2.5 w-2.5 rounded-full bg-success/70" />
-          </div>
-          <span className="ml-3 font-mono text-xs text-muted-foreground">skate-pipeline.log</span>
+    <div className="flex h-full min-h-[320px] flex-col overflow-hidden bg-[#0d0d0d] text-[#e8e4dd]">
+      <div className="flex items-center justify-between border-b border-[#e8e4dd]/15 px-6 py-3">
+        <div className="flex items-center gap-3">
+          <span className="font-mono text-[10px] uppercase tracking-[0.28em] text-[#e8e4dd]/50">
+            System Log
+          </span>
+          <span className="font-mono text-[10px] text-[#e8e4dd]/30">0x4f2a · skate-pipeline.log</span>
         </div>
         {video && (
-          <span className="font-mono text-[10px] uppercase tracking-wider text-primary">
+          <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-emerald-400">
             {STAGE_LABEL[video.stage] ?? video.stage}
           </span>
         )}
@@ -48,14 +46,14 @@ export function PipelineTerminal({ video }: Props) {
 
       <div
         ref={scrollRef}
-        className="flex-1 overflow-auto bg-background/40 px-5 py-4 font-mono text-[12.5px] leading-relaxed"
+        className="flex-1 overflow-auto px-6 py-4 font-mono text-[11.5px] leading-relaxed text-[#e8e4dd]/85"
       >
         {!video ? (
           <div className="flex h-full flex-col items-center justify-center text-center text-muted-foreground">
-            <span className="font-mono text-[11px] uppercase tracking-[0.3em] text-primary">
-              awaiting input
+            <span className="font-mono text-[10px] uppercase tracking-[0.28em] text-emerald-400">
+              Awaiting Input
             </span>
-            <p className="mt-3 max-w-xs text-sm">
+            <p className="mt-3 max-w-xs text-sm text-[#e8e4dd]/55">
               Submit a video to stream live progress here.
             </p>
           </div>
@@ -63,18 +61,18 @@ export function PipelineTerminal({ video }: Props) {
           <>
             {lines.map((line, i) => (
               <div key={i} className="flex gap-3">
-                <span className="select-none text-muted-foreground/40">
+                <span className="select-none text-[#e8e4dd]/30">
                   {String(i + 1).padStart(3, "0")}
                 </span>
-                <span className="flex-1 whitespace-pre-wrap text-foreground/90">{line}</span>
+                <span className="flex-1 whitespace-pre-wrap text-[#e8e4dd]/90">{line}</span>
               </div>
             ))}
             {video.status === "processing" && (
               <div className="mt-2 flex gap-3">
-                <span className="select-none text-muted-foreground/40">
+                <span className="select-none text-[#e8e4dd]/30">
                   {String(lines.length + 1).padStart(3, "0")}
                 </span>
-                <span className="text-primary">
+                <span className="text-emerald-400">
                   <span className="pulse-dot inline-block">▋</span>
                 </span>
               </div>
@@ -84,24 +82,24 @@ export function PipelineTerminal({ video }: Props) {
       </div>
 
       {video && (
-        <div className="border-t border-border/60 bg-surface/40 px-5 py-3">
+        <div className="border-t border-[#e8e4dd]/15 px-6 py-3">
           <div className="flex items-center justify-between text-xs">
-            <span className="font-mono text-muted-foreground">
+            <span className="font-mono text-[#e8e4dd]/55">
               progress · {Math.round(video.progress)}%
             </span>
             <span
-              className={`font-mono uppercase tracking-wider ${
+              className={`font-mono uppercase tracking-[0.22em] ${
                 video.status === "completed"
-                  ? "text-success"
+                  ? "text-emerald-400"
                   : video.status === "failed"
-                    ? "text-destructive"
-                    : "text-warning"
+                    ? "text-red-400"
+                    : "text-amber-400"
               }`}
             >
               {video.status}
             </span>
           </div>
-          <Progress value={video.progress} className="mt-2 h-1.5 bg-surface" />
+          <Progress value={video.progress} className="mt-2 h-1 rounded-none bg-[#e8e4dd]/15" />
         </div>
       )}
     </div>

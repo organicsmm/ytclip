@@ -156,11 +156,13 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
   })();
 
   return (
-    <div className="glass-card rounded-2xl p-6 sm:p-8">
-      <div className="mb-6 flex items-center justify-between">
+    <div className="paper-card p-6 sm:p-10">
+      <div className="mb-8 flex items-end justify-between border-b border-[color:var(--color-ink)]/10 pb-5">
         <div>
-          <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-primary">step 01</p>
-          <h2 className="mt-1 font-display text-2xl font-semibold">Submit your video</h2>
+          <p className="eyebrow">Step 01 · Source</p>
+          <h2 className="mt-2 font-display text-4xl italic leading-none text-[color:var(--color-ink)]">
+            Source Submission
+          </h2>
         </div>
       </div>
 
@@ -356,16 +358,14 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
       <Button
         onClick={handleSubmit}
         disabled={submitting || disabled}
-        className="btn-glow mt-7 h-12 w-full rounded-xl font-display text-base font-semibold"
+        className="btn-glow mt-8 h-14 w-full rounded-none text-[11px] font-semibold uppercase tracking-[0.28em]"
       >
         {submitting ? (
           <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Starting…
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Initialising…
           </>
         ) : (
-          <>
-            <Sparkles className="mr-2 h-4 w-4" /> Generate Viral Clips
-          </>
+          <>Generate Clips</>
         )}
       </Button>
     </div>

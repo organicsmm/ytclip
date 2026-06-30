@@ -1,7 +1,6 @@
 import type { ClipRow, VideoRow } from "@/lib/skate-types";
-import { Download, Sparkles, Clock } from "lucide-react";
+import { Download, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 
 interface Props {
   video: VideoRow | null;
@@ -11,12 +10,21 @@ interface Props {
 export function ClipsGrid({ video, clips }: Props) {
   if (!video) {
     return (
-      <div className="glass-card rounded-2xl p-12 text-center">
-        <Sparkles className="mx-auto h-10 w-10 text-primary/60" />
-        <h3 className="mt-4 font-display text-xl font-semibold">Your shorts will appear here</h3>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Generated clips show up live as the AI selects them.
-        </p>
+      <div>
+        <SectionHeader title="Refined Clips" count={0} />
+        <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div
+              key={i}
+              className="paper-card flex aspect-[9/16] flex-col items-center justify-center text-center"
+            >
+              <div className="h-px w-10 bg-[color:var(--color-ink)]/20" />
+              <span className="mt-3 font-mono text-[10px] uppercase tracking-[0.28em] text-foreground/35">
+                Pending Data
+              </span>
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
@@ -24,12 +32,12 @@ export function ClipsGrid({ video, clips }: Props) {
   if (clips.length === 0 && video.status === "processing") {
     return (
       <div>
-        <SectionHeader video={video} />
-        <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        <SectionHeader title={video.title} subtitle="Processing source material…" />
+        <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 3 }).map((_, i) => (
             <div
               key={i}
-              className="glass-card aspect-[9/16] animate-pulse rounded-2xl"
+              className="paper-card aspect-[9/16] animate-pulse"
               style={{ animationDelay: `${i * 120}ms` }}
             />
           ))}
@@ -38,14 +46,12 @@ export function ClipsGrid({ video, clips }: Props) {
     );
   }
 
-  if (clips.length === 0) {
-    return null;
-  }
+  if (clips.length === 0) return null;
 
   return (
     <div>
-      <SectionHeader video={video} count={clips.length} />
-      <div className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+      <SectionHeader title={video.title} count={clips.length} />
+      <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {clips.map((c) => (
           <ClipCard key={c.id} clip={c} />
         ))}
@@ -54,22 +60,29 @@ export function ClipsGrid({ video, clips }: Props) {
   );
 }
 
-function SectionHeader({ video, count }: { video: VideoRow; count?: number }) {
+function SectionHeader({
+  title,
+  count,
+  subtitle,
+}: {
+  title: string;
+  count?: number;
+  subtitle?: string;
+}) {
   return (
-    <div className="flex items-end justify-between">
+    <div className="flex items-end justify-between border-b border-[color:var(--color-ink)]/10 pb-5">
       <div>
-        <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-primary">
-          step 03 · results
-        </p>
-        <h2 className="mt-1 font-display text-3xl font-bold text-gradient">
-          {video.title}
+        <p className="eyebrow">Step 03 · Results</p>
+        <h2 className="mt-2 font-display text-4xl italic leading-none text-[color:var(--color-ink)] md:text-5xl">
+          {title}
         </h2>
-        {count !== undefined && (
-          <p className="mt-1 text-sm text-muted-foreground">
-            {count} viral shorts generated, ranked by AI engagement score.
-          </p>
-        )}
+        {subtitle && <p className="mt-2 text-sm text-foreground/60">{subtitle}</p>}
       </div>
+      {count !== undefined && (
+        <span className="font-mono text-[10px] uppercase tracking-[0.28em] text-foreground/45">
+          {String(count).padStart(2, "0")} Clips Ranked
+        </span>
+      )}
     </div>
   );
 }
@@ -77,9 +90,9 @@ function SectionHeader({ video, count }: { video: VideoRow; count?: number }) {
 function ClipCard({ clip }: { clip: ClipRow }) {
   const duration = clip.end_time - clip.start_time;
   return (
-    <article className="glass-card group flex flex-col overflow-hidden rounded-2xl transition-all hover:border-primary/40 hover:shadow-glow-sm">
+    <article className="paper-card group flex flex-col overflow-hidden transition-colors hover:border-[color:var(--color-ink)]/30">
       <div
-        className={`relative w-full overflow-hidden bg-black ${
+        className={`relative w-full overflow-hidden bg-[#0d0d0d] ${
           clip.aspect_ratio === "1:1" ? "aspect-square" : "aspect-[9/16]"
         }`}
       >
@@ -92,57 +105,56 @@ function ClipCard({ clip }: { clip: ClipRow }) {
             className="h-full w-full object-cover"
           />
         ) : (
-          <div className="flex h-full w-full flex-col items-center justify-center bg-gradient-to-br from-primary/20 to-primary-glow/10 text-center">
-            <Sparkles className="h-8 w-8 text-primary" />
-            <p className="mt-2 px-4 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-              rendered short preview
-            </p>
+          <div className="flex h-full w-full flex-col items-center justify-center bg-[color:var(--color-surface)] text-center">
+            <div className="h-px w-10 bg-[color:var(--color-ink)]/20" />
+            <span className="mt-3 font-mono text-[10px] uppercase tracking-[0.28em] text-foreground/45">
+              Rendering Preview
+            </span>
           </div>
         )}
-        <div className="absolute right-2 top-2">
-          <Badge className="border-primary/40 bg-background/80 font-mono text-[10px] backdrop-blur">
-            Score {Math.round(clip.score)}%
-          </Badge>
+        <div className="absolute right-3 top-3 bg-[#0d0d0d] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.18em] text-[#f5f3ee]">
+          Score {Math.round(clip.score)}
         </div>
-        <div className="absolute bottom-2 left-2">
-          <Badge variant="outline" className="border-border/60 bg-background/80 font-mono text-[10px] backdrop-blur">
-            <Clock className="mr-1 h-2.5 w-2.5" />
-            {formatTime(clip.start_time)} → {formatTime(clip.end_time)} · {duration.toFixed(0)}s
-          </Badge>
+        <div className="absolute bottom-3 left-3 inline-flex items-center gap-1.5 bg-[#0d0d0d]/85 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.18em] text-[#f5f3ee]">
+          <Clock className="h-2.5 w-2.5" />
+          {formatTime(clip.start_time)}–{formatTime(clip.end_time)} · {duration.toFixed(0)}s
         </div>
       </div>
 
-      <div className="flex flex-1 flex-col p-4">
-        <h3 className="line-clamp-2 font-display text-base font-semibold">{clip.title}</h3>
+      <div className="flex flex-1 flex-col p-5">
+        <h3 className="line-clamp-2 font-display text-xl italic leading-tight text-[color:var(--color-ink)]">
+          {clip.title}
+        </h3>
         {clip.hook && (
-          <p className="mt-2 line-clamp-3 text-sm text-muted-foreground">"{clip.hook}"</p>
+          <p className="mt-3 line-clamp-3 text-sm leading-relaxed text-foreground/70">
+            “{clip.hook}”
+          </p>
         )}
         {clip.hashtags.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-1.5">
+          <div className="mt-4 flex flex-wrap gap-1.5">
             {clip.hashtags.slice(0, 4).map((h) => (
               <span
                 key={h}
-                className="rounded-md bg-primary/10 px-2 py-0.5 font-mono text-[10px] text-primary"
+                className="border border-[color:var(--color-ink)]/15 bg-[color:var(--color-paper)] px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-foreground/70"
               >
                 {h.startsWith("#") ? h : `#${h}`}
               </span>
             ))}
           </div>
         )}
-        <div className="mt-4 flex-1" />
+        <div className="mt-5 flex-1" />
         <Button
           asChild={!!clip.video_url}
-          variant="secondary"
-          className="mt-2 w-full bg-primary/15 text-foreground hover:bg-primary/25"
+          className="btn-glow mt-3 h-11 w-full rounded-none text-[10px] font-semibold uppercase tracking-[0.28em]"
           disabled={!clip.video_url}
         >
           {clip.video_url ? (
             <a href={clip.video_url} download>
-              <Download className="mr-2 h-4 w-4" /> Download MP4
+              <Download className="mr-2 h-3.5 w-3.5" /> Download MP4
             </a>
           ) : (
             <span>
-              <Download className="mr-2 h-4 w-4" /> Rendering…
+              <Download className="mr-2 h-3.5 w-3.5" /> Rendering…
             </span>
           )}
         </Button>

@@ -32,23 +32,21 @@ export function PipelineStages({ video, preStage }: Props) {
   const pct = Math.round((doneCount / stages.length) * 100);
 
   return (
-    <div className="glass-card rounded-2xl p-5">
-      <div className="mb-4 flex items-center justify-between">
+    <div className="paper-card h-full p-6">
+      <div className="mb-6 flex items-end justify-between border-b border-[color:var(--color-ink)]/10 pb-4">
         <div>
-          <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-primary">
-            live pipeline
-          </p>
-          <h3 className="mt-0.5 font-display text-base font-semibold">
+          <p className="eyebrow">Pipeline</p>
+          <h3 className="mt-2 font-display text-2xl italic text-[color:var(--color-ink)]">
             {activeIdx >= 0
               ? stages[activeIdx].label
               : video?.status === "completed"
                 ? "Complete"
                 : video?.status === "failed"
                   ? "Failed"
-                  : "Idle"}
+                  : "Standby"}
           </h3>
         </div>
-        <span className="font-mono text-xs text-muted-foreground">{pct}%</span>
+        <span className="font-mono text-xs text-foreground/55">{pct}%</span>
       </div>
 
       <ol className="space-y-2">
