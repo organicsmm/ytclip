@@ -153,6 +153,19 @@ function SectionHeader({
 
 function ClipCard({ clip }: { clip: ClipRow }) {
   const duration = clip.end_time - clip.start_time;
+  const [downloading, setDownloading] = useState(false);
+  const ready = !!clip.video_url;
+
+  const handleDownload = async () => {
+    if (downloading) return;
+    setDownloading(true);
+    try {
+      await downloadClip(clip);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   return (
     <article className="paper-card group flex flex-col overflow-hidden transition-colors hover:border-[color:var(--color-ink)]/30">
       <div
