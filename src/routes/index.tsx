@@ -71,6 +71,17 @@ function Dashboard() {
       if (!cancelled && v) {
         const nextVideo = v as unknown as VideoRow;
         isProcessing = nextVideo.status === "processing";
+        if (isStalledTranscribe(nextVideo)) {
+          await supabase
+            .from("videos")
+            .update({
+              status: "failed",
+              stage: "failed",
+              error: "This run got stuck while reading video metadata. Please start it again.",
+            })
+            .eq("id", activeVideoId);
+          isProcessing = false;
+        }
         setVideo(nextVideo);
       }
 
@@ -150,4 +161,12 @@ function Dashboard() {
       </footer>
     </main>
   );
+}
+
+function isStalledTranscribe(video: VideoRow): boolean {
+  if (video.status !== "processing" || video.stage !== "transcribing") return false;
+  if (video.progress > 40) return false;
+  const updatedAt = new Date(video.updated_at).getTime();
+  if (!Number.isFinite(updatedAt)) return false;
+  return Date.now() - updatedAt > 10 * 60 * 1000;
 }
