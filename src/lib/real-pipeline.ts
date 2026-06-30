@@ -135,7 +135,18 @@ async function runPipeline(videoId: string, userId: string, params: StartParams)
   const inputName = `in.${ext}`;
   await ff.writeFile(inputName, await fetchFile(params.file));
 
-  const duration = await probeDuration(params.file);
+  let duration = 0;
+  try {
+    duration = await probeDuration(params.file, 8000);
+  } catch {
+    await push("   browser couldn't read metadata, probing with ffmpeg…");
+  }
+  if (!duration || !isFinite(duration)) {
+    duration = await probeDurationWithFFmpeg(ff, inputName);
+  }
+  if (!duration || !isFinite(duration) || duration <= 0) {
+    throw new Error("Could not determine video duration");
+  }
   await push(`🎬 Source duration: ${fmtTime(duration)} (${Math.floor(duration)}s)`, {
     progress: 42,
   });
@@ -260,24 +271,53 @@ async function runPipeline(videoId: string, userId: string, params: StartParams)
     .eq("id", videoId);
 }
 
-function probeDuration(file: File): Promise<number> {
+function probeDuration(file: File, timeoutMs = 8000): Promise<number> {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const v = document.createElement("video");
     v.preload = "metadata";
     v.muted = true;
-    v.src = url;
-    v.onloadedmetadata = () => {
-      const d = v.duration;
+    const cleanup = () => {
       URL.revokeObjectURL(url);
-      if (!isFinite(d) || d <= 0) reject(new Error("Could not read video duration"));
+      v.removeAttribute("src");
+    };
+    const t = setTimeout(() => {
+      cleanup();
+      reject(new Error("metadata timeout"));
+    }, timeoutMs);
+    v.onloadedmetadata = () => {
+      clearTimeout(t);
+      const d = v.duration;
+      cleanup();
+      if (!isFinite(d) || d <= 0) reject(new Error("invalid duration"));
       else resolve(d);
     };
     v.onerror = () => {
-      URL.revokeObjectURL(url);
+      clearTimeout(t);
+      cleanup();
       reject(new Error("Could not load video metadata"));
     };
+    v.src = url;
   });
+}
+
+async function probeDurationWithFFmpeg(ff: FFmpeg, inputName: string): Promise<number> {
+  let dur = 0;
+  const handler = ({ message }: { message: string }) => {
+    // ffmpeg prints e.g. "  Duration: 00:01:23.45, start: 0.000000, ..."
+    const m = message.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
+    if (m) {
+      dur = Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]);
+    }
+  };
+  ff.on("log", handler);
+  try {
+    // -f null with no output forces ffmpeg to read & print metadata, then exit.
+    await ff.exec(["-i", inputName, "-f", "null", "-"]).catch(() => {});
+  } finally {
+    ff.off("log", handler);
+  }
+  return dur;
 }
 
 function fmtTime(sec: number): string {
