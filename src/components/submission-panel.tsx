@@ -242,7 +242,7 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
                     Modal is connected, but the deployed downloader is still failing upstream.
-                    Redeploy the latest Modal file, then retry this same link.
+                    Update the Modal secret with YouTube cookies, redeploy, then retry this same link.
                   </p>
                   <p className="mt-2 font-mono text-[11px] text-destructive/80">{ytError}</p>
 
