@@ -1,6 +1,70 @@
 import type { ClipRow, VideoRow } from "@/lib/autocliper-types";
-import { Download, Clock } from "lucide-react";
+import { Download, Clock, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useState } from "react";
+import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+
+/** Extract the storage object path from a Supabase signed/public URL for the `clips` bucket. */
+function extractClipsPath(url: string): string | null {
+  try {
+    const u = new URL(url);
+    // Signed:  /storage/v1/object/sign/clips/<path>?token=...
+    // Public:  /storage/v1/object/public/clips/<path>
+    // Auth:    /storage/v1/object/authenticated/clips/<path>
+    const m = u.pathname.match(/\/storage\/v1\/object\/(?:sign|public|authenticated)\/clips\/(.+)$/);
+    return m ? decodeURIComponent(m[1]) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function downloadClip(clip: ClipRow): Promise<void> {
+  if (!clip.video_url) {
+    toast.info("Still rendering", {
+      description: "Hang tight — this clip will be ready in a moment.",
+    });
+    return;
+  }
+  const path = extractClipsPath(clip.video_url);
+  if (!path) {
+    // Fallback: best-effort direct link
+    window.open(clip.video_url, "_blank", "noopener");
+    return;
+  }
+
+  // Mint a fresh short-lived signed URL each click (the stored one may have expired).
+  const { data: signed, error: signErr } = await supabase.storage
+    .from("clips")
+    .createSignedUrl(path, 60 * 10);
+
+  if (signErr || !signed?.signedUrl) {
+    toast.error("Couldn't generate download link", {
+      description: signErr?.message ?? "You may need to sign back in.",
+    });
+    return;
+  }
+
+  // Fetch as blob so the browser saves the file rather than navigating.
+  try {
+    const res = await fetch(signed.signedUrl);
+    if (!res.ok) throw new Error(`Download failed (${res.status})`);
+    const blob = await res.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = objectUrl;
+    const safe = clip.title.replace(/[^\w\s-]/g, "").trim().slice(0, 60) || "clip";
+    a.download = `${safe}.mp4`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 5_000);
+  } catch (e) {
+    toast.error("Download failed", {
+      description: e instanceof Error ? e.message : "Try again in a moment.",
+    });
+  }
+}
 
 interface Props {
   video: VideoRow | null;
