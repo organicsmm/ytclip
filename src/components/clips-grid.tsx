@@ -1,9 +1,11 @@
 import type { ClipRow, VideoRow } from "@/lib/autocliper-types";
-import { Download, Clock, Loader2 } from "lucide-react";
+import { Download, Clock, Loader2, Volume2, VolumeX } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { probeAudio } from "@/lib/audio-probe";
+
 
 /** Extract the storage object path from a Supabase signed/public URL for the `clips` bucket. */
 function extractClipsPath(url: string): string | null {
