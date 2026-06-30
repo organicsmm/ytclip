@@ -148,6 +148,15 @@ function Dashboard() {
         .select("*")
         .eq("id", activeVideoId)
         .maybeSingle();
+      if (!cancelled && !v) {
+        window.localStorage.removeItem("autocliper-active-video-id");
+        setActiveVideoId(null);
+        setVideo(null);
+        setClips([]);
+        isProcessing = false;
+        return;
+      }
+
       if (!cancelled && v) {
         let nextVideo = v as unknown as VideoRow;
         isProcessing = nextVideo.status === "processing";
