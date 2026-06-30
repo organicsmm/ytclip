@@ -161,19 +161,15 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
   };
 
   const handleSubmit = async () => {
-    // Quota check BEFORE any heavy work (download, ffmpeg, etc.)
+    // Pre-flight quota check (no increment) — block early if exhausted,
+    // but only charge AFTER the job has been successfully created.
     try {
-      const result = await consumeQuota();
-      if (!result.allowed) {
-        setQuota((q) =>
-          q ? { ...q, used: result.used, monthly_limit: result.monthly_limit } : q,
-        );
+      const q = await fetchQuota();
+      setQuota(q);
+      if (q.used >= q.monthly_limit) {
         setUpgradeOpen(true);
         return;
       }
-      setQuota((q) =>
-        q ? { ...q, used: result.used, monthly_limit: result.monthly_limit } : q,
-      );
     } catch (e) {
       const message = e instanceof Error ? e.message : "Couldn't verify your plan";
       toast.error(message);
@@ -223,6 +219,21 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
       };
       const videoId = await startRealPipeline(startParams);
 
+      // Job successfully created — now charge the quota. If this fails,
+      // log but don't block the user (job is already running).
+      try {
+        const result = await consumeQuota();
+        setQuota((prev) =>
+          prev ? { ...prev, used: result.used, monthly_limit: result.monthly_limit } : prev,
+        );
+        if (!result.allowed) {
+          // Race: another job consumed the last credit between pre-check and now.
+          setUpgradeOpen(true);
+        }
+      } catch (e) {
+        console.warn("[quota] failed to record usage after successful start", e);
+      }
+
       onJobStarted({
         videoId,
         restart: () => startRealPipeline(startParams),
@@ -238,6 +249,7 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
       setYtStatus(null);
     }
   };
+
 
   const switchToUpload = () => {
     setTab("upload");
