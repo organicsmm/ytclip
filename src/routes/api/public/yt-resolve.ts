@@ -26,13 +26,20 @@ type ApifyItem = {
   originalUrl?: string;
   downloadUrl?: string;
   storageUrl?: string;
+  url?: string;
+  output?: ApifyItem | ApifyItem[];
+  data?: ApifyItem | ApifyItem[];
+  items?: ApifyItem[];
   contentType?: string;
   fileSizeMB?: string | number;
   fileSizeBytes?: string | number;
   expiresAt?: string;
   error?: string;
   lengthSeconds?: string | number;
+  duration?: string | number;
+  durationSec?: string | number;
   thumbnail?: Array<{ url?: string }>;
+  thumbnailUrl?: string;
 };
 
 type ResolvePayload = {
@@ -44,7 +51,7 @@ type ResolvePayload = {
   mimeType: string;
   quality: string;
   thumbnail?: string;
-  source: "modal" | "rapidapi";
+  source: "modal" | "rapidapi" | "apify";
 };
 
 type RapidStream = {
@@ -105,9 +112,99 @@ function safeEqual(a: string, b: string): boolean {
 function isAllowedMediaUrl(raw: string): boolean {
   try {
     const url = new URL(raw);
-    return url.protocol === "https:" && url.hostname === "apify.dziura.online" && url.pathname.startsWith("/temp/");
+    if (url.protocol !== "https:") return false;
+    const host = url.hostname.toLowerCase();
+    if (
+      host === "localhost" ||
+      host === "127.0.0.1" ||
+      host === "0.0.0.0" ||
+      host === "169.254.169.254" ||
+      host.endsWith(".local")
+    ) return false;
+    return true;
   } catch {
     return false;
+  }
+}
+
+function flattenApifyItems(value: unknown): ApifyItem[] {
+  if (!value) return [];
+  if (Array.isArray(value)) return value.flatMap(flattenApifyItems);
+  if (typeof value !== "object") return [];
+  const item = value as ApifyItem;
+  return [
+    item,
+    ...flattenApifyItems(item.output),
+    ...flattenApifyItems(item.data),
+    ...flattenApifyItems(item.items),
+  ];
+}
+
+function firstDownloadableApifyItem(value: unknown): ApifyItem | undefined {
+  return flattenApifyItems(value).find((item) => item.downloadUrl || item.storageUrl || item.url);
+}
+
+async function resolveWithApify(
+  videoId: string,
+  cleanYtUrl: string,
+): Promise<{ ok: ResolvePayload } | { err: string; status?: number } | null> {
+  const apiToken = process.env.APIFY_API_TOKEN;
+  if (!apiToken) return null;
+
+  try {
+    const res = await fetchWithTimeout(
+      `https://api.apify.com/v2/acts/scraper_one~yt-downloader/run-sync?token=${encodeURIComponent(apiToken)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ videoUrls: [cleanYtUrl], quality: "720p", audioOnly: false }),
+      },
+      90000,
+    );
+
+    const bodyText = await res.text().catch(() => "");
+    if (!res.ok) {
+      console.error("[apify] actor failed", res.status, bodyText.slice(0, 500));
+      return { err: `Apify ${res.status}: ${bodyText.slice(0, 160) || res.statusText}`, status: 502 };
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = bodyText ? JSON.parse(bodyText) : null;
+    } catch {
+      return { err: "Apify returned invalid JSON", status: 502 };
+    }
+
+    const item = firstDownloadableApifyItem(parsed);
+    const mediaUrl = item?.downloadUrl ?? item?.storageUrl ?? item?.url;
+    if (!mediaUrl || !isAllowedMediaUrl(mediaUrl)) {
+      return { err: "Apify returned no safe downloadable MP4 URL", status: 502 };
+    }
+
+    const probeError = await probeDirectMediaUrl(mediaUrl, "Apify video");
+    if (probeError) return { err: probeError, status: 502 };
+
+    const sig = await hmacHex(mediaUrl, apiToken);
+    const durationRaw = item?.durationSec ?? item?.lengthSeconds ?? item?.duration;
+    const durationSec = typeof durationRaw === "number" ? durationRaw : Number(durationRaw ?? 0) || 0;
+    const thumb = item?.thumbnailUrl ?? item?.thumbnail?.find((t) => t.url)?.url;
+
+    return {
+      ok: {
+        videoId,
+        title: item?.title ?? "YouTube video",
+        durationSec,
+        streamUrl: `/api/public/yt-resolve?download=1&u=${encodeURIComponent(mediaUrl)}&sig=${sig}`,
+        mimeType: item?.contentType ?? "video/mp4",
+        quality: "720p",
+        thumbnail: thumb,
+        source: "apify",
+      },
+    };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    console.error("[apify] fetch threw", e);
+    return { err: `Apify network error: ${message}`, status: 502 };
   }
 }
 
@@ -184,9 +281,13 @@ function pickRapidAudio(audios: RapidStream[]): RapidStream | undefined {
 
 async function probeRapidStream(stream: RapidStream, label: string): Promise<string | null> {
   if (!stream.url) return `${label} stream is missing URL`;
+  return probeDirectMediaUrl(stream.url, label);
+}
+
+async function probeDirectMediaUrl(mediaUrl: string, label: string): Promise<string | null> {
   try {
     const res = await fetchWithTimeout(
-      stream.url,
+      mediaUrl,
       {
         headers: {
           Range: "bytes=0-1023",
@@ -320,9 +421,14 @@ export const Route = createFileRoute("/api/public/yt-resolve")({
         const rapidResult = await resolveWithRapidApi(videoId);
         if (rapidResult && "ok" in rapidResult) return Response.json(rapidResult.ok);
 
+        const apifyResult = await resolveWithApify(videoId, cleanYtUrlEarly);
+        if (apifyResult && "ok" in apifyResult) return Response.json(apifyResult.ok);
+
         const modalErr = modalResult && "err" in modalResult ? modalResult.err : "Modal not configured";
         const rapidErr = rapidResult && "err" in rapidResult ? rapidResult.err : "RapidAPI not configured";
+        const apifyErr = apifyResult && "err" in apifyResult ? apifyResult.err : "Apify not configured";
         const upstreamStatus =
+          (apifyResult && "err" in apifyResult ? apifyResult.status : undefined) ??
           (rapidResult && "err" in rapidResult ? rapidResult.status : undefined) ??
           (modalResult && "err" in modalResult ? modalResult.status : undefined) ??
           503;
@@ -332,12 +438,12 @@ export const Route = createFileRoute("/api/public/yt-resolve")({
         // of the preview treating the API response as an unhandled 5xx runtime error.
         return Response.json(
           {
-            error: `${modalErr}; ${rapidErr}`,
+            error: `${modalErr}; ${rapidErr}; ${apifyErr}`,
             setupRequired: true,
             setupMessage:
-              "Modal failed and RapidAPI fallback also failed. Check MODAL_AUTH_TOKEN/MODAL_YT_URL or RAPIDAPI_KEY, then retry.",
+              "All YouTube resolvers failed. Check Modal token/cookies, RapidAPI, or Apify, then retry.",
             upstreamStatus,
-            source: "modal+rapidapi",
+            source: "modal+rapidapi+apify",
             retryable: true,
           },
           { status: 200, headers: { "Cache-Control": "no-store" } },
