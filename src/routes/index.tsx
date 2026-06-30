@@ -8,6 +8,7 @@ import { ClipsGrid } from "@/components/clips-grid";
 import { Hero } from "@/components/hero";
 import { supabase } from "@/integrations/supabase/client";
 import type { VideoRow, ClipRow } from "@/lib/autocliper-types";
+import { resumeRealPipelineFromStoredSource } from "@/lib/real-pipeline";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -86,11 +87,9 @@ function Dashboard() {
 
       // Stalled. Try auto-retry if we can.
       window.clearInterval(check);
-      const restart = restartRef.current;
+        const restart = restartRef.current ?? (() => resumeRealPipelineFromStoredSource(video.id));
       if (!restart || retryCountRef.current >= MAX_AUTO_RETRIES) {
-        const msg = !restart
-          ? "Pipeline stalled and the source file is no longer in memory. Please start it again."
-          : `Pipeline stalled after ${MAX_AUTO_RETRIES} auto-retries. Please start it again.`;
+        const msg = `Pipeline stalled after ${MAX_AUTO_RETRIES} auto-retries. Please start it again.`;
         await supabase
           .from("videos")
           .update({ status: "failed", stage: "failed", error: msg })
