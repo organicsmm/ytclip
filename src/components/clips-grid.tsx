@@ -221,18 +221,24 @@ function ClipCard({ clip }: { clip: ClipRow }) {
         )}
         <div className="mt-5 flex-1" />
         <Button
-          asChild={!!clip.video_url}
+          type="button"
+          onClick={handleDownload}
           className="btn-glow mt-3 h-11 w-full rounded-none text-[10px] font-semibold uppercase tracking-[0.28em]"
-          disabled={!clip.video_url}
+          disabled={!ready || downloading}
+          title={ready ? "Download MP4" : "Clip is still rendering — try again in a moment"}
         >
-          {clip.video_url ? (
-            <a href={clip.video_url} download>
+          {downloading ? (
+            <>
+              <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> Preparing…
+            </>
+          ) : ready ? (
+            <>
               <Download className="mr-2 h-3.5 w-3.5" /> Download MP4
-            </a>
+            </>
           ) : (
-            <span>
-              <Download className="mr-2 h-3.5 w-3.5" /> Rendering…
-            </span>
+            <>
+              <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> Rendering…
+            </>
           )}
         </Button>
       </div>
