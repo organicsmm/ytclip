@@ -15,9 +15,11 @@ import { Link2, Upload, Sparkles, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { startRealPipeline } from "@/lib/real-pipeline";
 import type { PipelineConfig } from "@/lib/skate-types";
+import type { PreStage } from "@/components/pipeline-stages";
 
 interface Props {
   onJobStarted: (videoId: string) => void;
+  onPreStageChange?: (s: PreStage) => void;
   disabled?: boolean;
 }
 
