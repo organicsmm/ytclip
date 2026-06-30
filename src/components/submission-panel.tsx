@@ -23,7 +23,7 @@ import {
   firstError,
 } from "@/lib/validation";
 import { useServerFn } from "@tanstack/react-start";
-import { getQuota, consumeVideoQuota, type Quota } from "@/lib/billing.functions";
+import { getQuota, type Quota } from "@/lib/billing.functions";
 import { UpgradeModal } from "@/components/upgrade-modal";
 
 interface JobStartPayload {
@@ -51,7 +51,6 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
   const [quota, setQuota] = useState<Quota | null>(null);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const fetchQuota = useServerFn(getQuota);
-  const consumeQuota = useServerFn(consumeVideoQuota);
 
   const refreshQuota = async () => {
     try {
@@ -63,6 +62,9 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
   };
   useEffect(() => {
     void refreshQuota();
+    const onQuotaChanged = () => void refreshQuota();
+    window.addEventListener("autocliper-quota-changed", onQuotaChanged);
+    return () => window.removeEventListener("autocliper-quota-changed", onQuotaChanged);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -218,21 +220,6 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
         },
       };
       const videoId = await startRealPipeline(startParams);
-
-      // Job successfully created — now charge the quota. If this fails,
-      // log but don't block the user (job is already running).
-      try {
-        const result = await consumeQuota();
-        setQuota((prev) =>
-          prev ? { ...prev, used: result.used, monthly_limit: result.monthly_limit } : prev,
-        );
-        if (!result.allowed) {
-          // Race: another job consumed the last credit between pre-check and now.
-          setUpgradeOpen(true);
-        }
-      } catch (e) {
-        console.warn("[quota] failed to record usage after successful start", e);
-      }
 
       onJobStarted({
         videoId,

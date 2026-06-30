@@ -12,6 +12,7 @@ import { toBlobURL } from "@ffmpeg/util";
 import { supabase } from "@/integrations/supabase/client";
 import { ensureSessionUser } from "@/lib/session";
 import { generateClipSuggestions } from "@/lib/ai.functions";
+import { consumeVideoQuota } from "@/lib/billing.functions";
 import type { PipelineConfig, VideoStage } from "@/lib/autocliper-types";
 
 interface StartParams {
@@ -434,6 +435,12 @@ async function runPipeline(
     .from("videos")
     .update({ status: "completed", stage: "completed", progress: 100, log_lines: log })
     .eq("id", videoId);
+  try {
+    await consumeVideoQuota();
+    window.dispatchEvent(new CustomEvent("autocliper-quota-changed"));
+  } catch (e) {
+    console.warn("[quota] failed to record usage after successful generation", e);
+  }
   deleteCachedPipelineSource(videoId).catch(() => undefined);
 }
 
