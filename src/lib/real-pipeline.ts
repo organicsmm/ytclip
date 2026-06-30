@@ -26,26 +26,33 @@ async function getFFmpeg(onLog?: (msg: string) => void): Promise<FFmpeg> {
   if (ffmpegSingleton) return ffmpegSingleton;
   const ff = new FFmpeg();
   ff.on("log", ({ message }) => onLog?.(message));
+  // Try multiple CDNs in case one is blocked / rate-limited / down. Order is
+  // fastest-first; esm.sh proxies npm reliably from Cloudflare.
   const cdns = [
     "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm",
     "https://unpkg.com/@ffmpeg/core@0.12.10/dist/esm",
+    "https://esm.sh/@ffmpeg/core@0.12.10/dist/esm",
+    "https://cdn.skypack.dev/@ffmpeg/core@0.12.10/dist/esm",
+    "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm",
   ];
-  let lastErr: unknown;
+  const errors: string[] = [];
   for (const base of cdns) {
     try {
-      await ff.load({
-        coreURL: await toBlobURL(`${base}/ffmpeg-core.js`, "text/javascript"),
-        wasmURL: await toBlobURL(`${base}/ffmpeg-core.wasm`, "application/wasm"),
-      });
-      lastErr = null;
-      break;
+      const [coreURL, wasmURL] = await Promise.all([
+        toBlobURL(`${base}/ffmpeg-core.js`, "text/javascript"),
+        toBlobURL(`${base}/ffmpeg-core.wasm`, "application/wasm"),
+      ]);
+      await ff.load({ coreURL, wasmURL });
+      ffmpegSingleton = ff;
+      return ff;
     } catch (e) {
-      lastErr = e;
+      const msg = e instanceof Error ? e.message : String(e);
+      errors.push(`${new URL(base).hostname}: ${msg}`);
     }
   }
-  if (lastErr) throw lastErr;
-  ffmpegSingleton = ff;
-  return ff;
+  throw new Error(
+    `Could not load ffmpeg engine from any CDN. Check your internet / ad-blocker and try again.\n${errors.join("\n")}`,
+  );
 }
 
 export async function startRealPipeline(params: StartParams): Promise<string> {
