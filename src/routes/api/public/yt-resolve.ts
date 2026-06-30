@@ -17,36 +17,47 @@ function extractVideoId(input: string): string | null {
   return null;
 }
 
-type SmvdVideo = {
+/**
+ * Apify-based YouTube resolver using `pintostudio/youtube-downloader` actor.
+ * Runs entirely on Apify's cloud — independent of dev/user machines.
+ * Docs: https://apify.com/pintostudio/youtube-downloader
+ */
+// Output shape from epctex/youtube-video-downloader. Field names vary across
+// runs; we coerce defensively below.
+type ApifyItem = {
+  title?: string;
+  duration?: string | number;
+  durationSec?: number;
+  thumbnail?: string;
+  thumbnailUrl?: string;
+  videoUrl?: string;
+  downloadUrl?: string;
   url?: string;
-  label?: string;
-  metadata?: {
-    itag?: number;
-    width?: number;
-    height?: number;
-    content_length?: number;
-    quality_label?: string;
-    mime_type?: string;
+  mimeType?: string;
+  quality?: string;
+  height?: number;
+  medias?: Array<{
+    url?: string;
+    quality?: string;
+    extension?: string;
+    type?: string;
+    is_audio?: boolean;
     has_audio?: boolean;
-    has_video?: boolean;
-  };
+    height?: number;
+    width?: number;
+    mime_type?: string;
+  }>;
 };
 
-type SmvdResponse = {
-  error?: string | null;
-  contents?: Array<{
-    videos?: SmvdVideo[];
-    title?: string;
-    duration?: number;
-    duration_formatted?: string;
-    thumbnails?: Array<{ url: string }>;
-  }>;
-  metadata?: {
-    title?: string;
-    duration?: number;
-    thumbnails?: Array<{ url: string }>;
-  };
-};
+function parseDuration(d: string | number | undefined): number {
+  if (typeof d === "number") return d;
+  if (!d) return 0;
+  const parts = d.split(":").map((p) => Number(p));
+  if (parts.some(isNaN)) return 0;
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  return parts[0] || 0;
+}
 
 export const Route = createFileRoute("/api/public/yt-resolve")({
   server: {
@@ -59,64 +70,68 @@ export const Route = createFileRoute("/api/public/yt-resolve")({
           return Response.json({ error: "Invalid YouTube URL" }, { status: 400 });
         }
 
-        const apiKey = process.env.RAPIDAPI_KEY;
-        if (!apiKey) {
-          return Response.json({ error: "RAPIDAPI_KEY is not configured on the server." });
+        const apifyToken = process.env.APIFY_API_TOKEN;
+        if (!apifyToken) {
+          return Response.json({ error: "APIFY_API_TOKEN is not configured on the server." });
         }
+
+        const cleanYtUrl = `https://www.youtube.com/watch?v=${videoId}`;
 
         try {
           const res = await fetch(
-            `https://social-media-video-downloader.p.rapidapi.com/youtube/v3/video/details?videoId=${encodeURIComponent(videoId)}&urlAccess=proxied&renderableFormats=720p&getTranscript=false`,
+            `https://api.apify.com/v2/acts/epctex~youtube-video-downloader/run-sync-get-dataset-items?token=${encodeURIComponent(apifyToken)}&timeout=180`,
             {
-              headers: {
-                "x-rapidapi-key": apiKey,
-                "x-rapidapi-host": "social-media-video-downloader.p.rapidapi.com",
-              },
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                startUrls: [cleanYtUrl],
+                videoIds: [videoId],
+                quality: "360p",
+              }),
             },
           );
 
           if (!res.ok) {
             const body = await res.text().catch(() => "");
             return Response.json({
-              error: `Video downloader API failed (${res.status}). ${body.slice(0, 200)}`,
+              error: `Apify call failed (${res.status}). ${body.slice(0, 300)}`,
             });
           }
 
-          const data = (await res.json()) as SmvdResponse;
-
-          if (data.error) {
-            return Response.json({ error: data.error });
+          const items = (await res.json()) as ApifyItem[];
+          const item = items?.[0];
+          if (!item) {
+            return Response.json({ error: "Apify returned no items." });
           }
 
-          const videos: SmvdVideo[] = data.contents?.[0]?.videos ?? [];
-          if (videos.length === 0) {
-            return Response.json({ error: "No video formats returned." });
-          }
-
-          // Prefer mp4 with audio+video, then by height
-          const ranked = [...videos].sort((a, b) => {
-            const aw = (a.metadata?.has_audio && a.metadata?.has_video) ? 1 : 0;
-            const bw = (b.metadata?.has_audio && b.metadata?.has_video) ? 1 : 0;
-            if (aw !== bw) return bw - aw;
-            return (b.metadata?.height ?? 0) - (a.metadata?.height ?? 0);
-          });
+          // Try top-level URL first (epctex shape), then fall back to medias array.
+          const topUrl = item.downloadUrl || item.videoUrl || item.url;
+          const medias = item.medias ?? [];
+          // Prefer mp4 with audio+video, then highest height
+          const ranked = [...medias]
+            .filter((m) => m.url && !m.is_audio)
+            .sort((a, b) => {
+              const aHas = a.has_audio !== false ? 1 : 0;
+              const bHas = b.has_audio !== false ? 1 : 0;
+              if (aHas !== bHas) return bHas - aHas;
+              return (b.height ?? 0) - (a.height ?? 0);
+            });
           const chosen = ranked[0];
-
-          if (!chosen?.url) {
-            return Response.json({ error: "No playable stream URL." });
+          const streamUrl = topUrl || chosen?.url;
+          if (!streamUrl) {
+            return Response.json({
+              error: `No playable stream URL from Apify. Got: ${JSON.stringify(item).slice(0, 300)}`,
+            });
           }
 
-          const meta = data.contents?.[0];
           return Response.json({
             videoId,
-            title: meta?.title ?? data.metadata?.title ?? "YouTube video",
-            durationSec: meta?.duration ?? data.metadata?.duration ?? 0,
-            streamUrl: chosen.url,
-            mimeType: chosen.metadata?.mime_type?.split(";")[0] || "video/mp4",
-            quality: chosen.metadata?.quality_label || `${chosen.metadata?.height ?? "?"}p`,
-            thumbnail:
-              meta?.thumbnails?.[meta.thumbnails.length - 1]?.url ??
-              data.metadata?.thumbnails?.[0]?.url,
+            title: item.title ?? "YouTube video",
+            durationSec: parseDuration(item.durationSec ?? item.duration),
+            streamUrl,
+            mimeType: chosen?.mime_type?.split(";")[0] || item.mimeType?.split(";")[0] || "video/mp4",
+            quality: chosen?.quality || item.quality || `${chosen?.height ?? item.height ?? "?"}p`,
+            thumbnail: item.thumbnail || item.thumbnailUrl,
           });
         } catch (e) {
           const msg = e instanceof Error ? e.message : "Failed to resolve";

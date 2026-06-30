@@ -192,8 +192,8 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
             className="mt-2 h-12 border-border bg-surface/60"
           />
           <p className="mt-2 text-xs text-muted-foreground">
-            We resolve the stream server-side, then run ffmpeg.wasm + Lovable AI in your browser.
-            Works best on videos under ~20 min.
+            Powered by Apify cloud — works 24/7, independent of any local machine.
+            Best on videos under ~20 min.
           </p>
           {ytStatus && !ytError && (
             <p className="mt-3 flex items-center gap-2 text-xs text-primary">
