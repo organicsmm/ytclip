@@ -166,7 +166,7 @@ async function resolveWithRapidApi(
 async function resolveWithModal(
   videoId: string,
   cleanYtUrl: string,
-): Promise<ResolvePayload | null> {
+): Promise<{ ok: ResolvePayload } | { err: string } | null> {
   const base = process.env.MODAL_YT_URL;
   const token = process.env.MODAL_AUTH_TOKEN;
   if (!base || !token) return null;
@@ -176,7 +176,11 @@ async function resolveWithModal(
       `${base.replace(/\/$/, "")}/info?url=${encodeURIComponent(cleanYtUrl)}`,
       { headers: { Authorization: `Bearer ${token}` } },
     );
-    if (!res.ok) return null;
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      console.error("[modal] /info failed", res.status, body.slice(0, 500));
+      return { err: `Modal ${res.status}: ${body.slice(0, 200) || res.statusText}` };
+    }
     const data = (await res.json()) as {
       title?: string;
       duration_sec?: number;
@@ -184,20 +188,23 @@ async function resolveWithModal(
       mime_type?: string;
       stream_path?: string;
     };
-    if (!data.stream_path) return null;
+    if (!data.stream_path) return { err: "Modal returned no stream_path" };
     const streamUrl = `${base.replace(/\/$/, "")}${data.stream_path}`;
     return {
-      videoId,
-      title: data.title ?? "YouTube video",
-      durationSec: data.duration_sec ?? 0,
-      streamUrl,
-      mimeType: data.mime_type ?? "video/mp4",
-      quality: "720p",
-      thumbnail: data.thumbnail,
-      source: "modal",
+      ok: {
+        videoId,
+        title: data.title ?? "YouTube video",
+        durationSec: data.duration_sec ?? 0,
+        streamUrl,
+        mimeType: data.mime_type ?? "video/mp4",
+        quality: "720p",
+        thumbnail: data.thumbnail,
+        source: "modal",
+      },
     };
-  } catch {
-    return null;
+  } catch (e) {
+    console.error("[modal] fetch threw", e);
+    return { err: `Modal network error: ${(e as Error).message}` };
   }
 }
 
@@ -248,14 +255,15 @@ export const Route = createFileRoute("/api/public/yt-resolve")({
 
         const cleanYtUrlEarly = `https://www.youtube.com/watch?v=${videoId}`;
         // Modal is primary — Apify disabled.
-        const modalFirst = await resolveWithModal(videoId, cleanYtUrlEarly);
-        if (modalFirst) return Response.json(modalFirst);
+        const modalResult = await resolveWithModal(videoId, cleanYtUrlEarly);
+        if (modalResult && "ok" in modalResult) return Response.json(modalResult.ok);
+        const modalErr = modalResult && "err" in modalResult ? modalResult.err : "Modal not configured";
 
         // If Modal fails, try RapidAPI as last resort.
         const rapidLast = await resolveWithRapidApi(videoId, cleanYtUrlEarly, await fetchTitle(cleanYtUrlEarly));
         if (rapidLast) return Response.json(rapidLast);
 
-        return Response.json({ error: "Modal resolver failed and no fallback available." });
+        return Response.json({ error: modalErr }, { status: 502 });
       },
     },
   },

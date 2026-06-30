@@ -220,7 +220,7 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
             className="mt-2 h-12 border-border bg-surface/60"
           />
           <p className="mt-2 text-xs text-muted-foreground">
-            Powered by Apify cloud — works 24/7, independent of any local machine.
+            Powered by our Modal cloud resolver — works 24/7, no local machine needed.
             Best on videos under ~20 min.
           </p>
           {ytStatus && !ytError && (
