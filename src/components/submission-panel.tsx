@@ -49,7 +49,6 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
     if (!resolveRes.ok || meta.error || !meta.streamUrl) {
       throw new Error(meta.error || `Resolve failed (${resolveRes.status})`);
     }
-    };
     setYtStatus(`Downloading "${meta.title}"…`);
     onPreStageChange?.({ kind: "downloading", loaded: 0, total: 0 });
     const proxied = `/api/public/yt-proxy?u=${encodeURIComponent(meta.streamUrl)}`;
