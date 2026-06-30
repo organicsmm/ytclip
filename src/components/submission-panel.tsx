@@ -54,6 +54,7 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
       videoId?: string;
       title?: string;
       streamUrl?: string;
+      audioUrl?: string;
       mimeType?: string;
       durationSec?: number;
       error?: string;
@@ -62,38 +63,56 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
       throw new Error(meta.error || `Resolve failed (${resolveRes.status})`);
     }
     const title = meta.title || "YouTube video";
-    setYtStatus(`Downloading "${title}"…`);
-    onPreStageChange?.({ kind: "downloading", loaded: 0, total: 0 });
-    // Browser fetches the resolver's tunnel URL directly. The tunnel embeds the
-    // caller's IP into the googlevideo redirect, so it only works from the
-    // browser (not from our Cloudflare worker, which Google's CDN blocks).
-    const dl = await fetch(meta.streamUrl);
-    if (!dl.ok || !dl.body) throw new Error(`Download failed (${dl.status})`);
 
-    const total = Number(dl.headers.get("content-length") ?? 0);
-    const reader = dl.body.getReader();
-    const chunks: Uint8Array[] = [];
-    let loaded = 0;
-    let lastTick = 0;
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      chunks.push(value);
-      loaded += value.byteLength;
-      const now = Date.now();
-      if (now - lastTick > 150) {
-        lastTick = now;
-        const pctTxt = total
-          ? ` (${Math.round((loaded / total) * 100)}%)`
-          : "";
-        setYtStatus(`Downloading "${title}"…${pctTxt}`);
-        onPreStageChange?.({ kind: "downloading", loaded, total });
+    const downloadWithProgress = async (
+      url: string,
+      label: string,
+    ): Promise<Blob> => {
+      setYtStatus(`Downloading ${label} for "${title}"…`);
+      onPreStageChange?.({ kind: "downloading", loaded: 0, total: 0 });
+      const dl = await fetch(url);
+      if (!dl.ok || !dl.body) throw new Error(`Download failed (${dl.status})`);
+      const total = Number(dl.headers.get("content-length") ?? 0);
+      const reader = dl.body.getReader();
+      const chunks: Uint8Array[] = [];
+      let loaded = 0;
+      let lastTick = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        loaded += value.byteLength;
+        const now = Date.now();
+        if (now - lastTick > 150) {
+          lastTick = now;
+          const pctTxt = total ? ` (${Math.round((loaded / total) * 100)}%)` : "";
+          setYtStatus(`Downloading ${label} for "${title}"…${pctTxt}`);
+          onPreStageChange?.({ kind: "downloading", loaded, total });
+        }
       }
+      onPreStageChange?.({ kind: "downloading", loaded, total });
+      return new Blob(chunks as BlobPart[]);
+    };
+
+    let blob: Blob;
+    let outMime = meta.mimeType || "video/mp4";
+    if (meta.audioUrl) {
+      // RapidAPI path: video + audio are separate DASH streams; mux locally.
+      const [videoBlob, audioBlob] = await Promise.all([
+        downloadWithProgress(meta.streamUrl, "video"),
+        downloadWithProgress(meta.audioUrl, "audio"),
+      ]);
+      setYtStatus(`Muxing audio + video for "${title}"…`);
+      const { muxAudioVideoToMp4 } = await import("@/lib/real-pipeline");
+      blob = await muxAudioVideoToMp4(videoBlob, audioBlob);
+      outMime = "video/mp4";
+    } else {
+      blob = await downloadWithProgress(meta.streamUrl, "video");
+      blob = new Blob([blob], { type: outMime });
     }
-    onPreStageChange?.({ kind: "downloading", loaded, total });
-    const blob = new Blob(chunks as BlobPart[], { type: meta.mimeType || "video/mp4" });
+
     const safeName = title.replace(/[^\w\s-]/g, "").slice(0, 60) || "youtube-video";
-    const file = new File([blob], `${safeName}.mp4`, { type: meta.mimeType || "video/mp4" });
+    const file = new File([blob], `${safeName}.mp4`, { type: outMime });
     setYtStatus(null);
     onPreStageChange?.({ kind: "uploading" });
     return { file, title };

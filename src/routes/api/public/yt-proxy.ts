@@ -1,9 +1,19 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 /**
- * Streams a YouTube video back to the browser. Pass ?id=<videoId>.
- * Re-resolves a fresh tunnel URL via the smvd RapidAPI each call (tunnel URLs
- * are short-lived and embed the caller's IP in the resulting redirect).
+ * Returns a short-lived 302 redirect to a fresh googlevideo URL for a YouTube
+ * stream. Pass ?id=<videoId>&kind=video|audio.
+ *
+ * Why a redirect (not a worker proxy): the tunnel URLs from smvd embed the
+ * *requesting* IP into the resulting googlevideo URL. If the worker fetches
+ * the tunnel, the googlevideo URL is locked to the worker's IP — and
+ * googlevideo CDN frequently 403s requests from datacenter IPs. By
+ * redirecting, the browser fetches the tunnel itself, so the googlevideo URL
+ * is bound to the user's IP and works.
+ *
+ * Note: smvd does not provide a muxed (audio+video) MP4 — only separate
+ * DASH streams. The client is expected to download both and mux locally
+ * (ffmpeg.wasm `-c copy`).
  */
 export const Route = createFileRoute("/api/public/yt-proxy")({
   server: {
@@ -11,8 +21,12 @@ export const Route = createFileRoute("/api/public/yt-proxy")({
       GET: async ({ request }) => {
         const url = new URL(request.url);
         const videoId = url.searchParams.get("id");
+        const kind = (url.searchParams.get("kind") ?? "video") as "video" | "audio";
         if (!videoId || !/^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
           return new Response("Missing or invalid id", { status: 400 });
+        }
+        if (kind !== "video" && kind !== "audio") {
+          return new Response("Invalid kind", { status: 400 });
         }
 
         const apiKey = process.env.RAPIDAPI_KEY;
@@ -21,7 +35,7 @@ export const Route = createFileRoute("/api/public/yt-proxy")({
         }
 
         const metaRes = await fetch(
-          `https://social-media-video-downloader.p.rapidapi.com/youtube/v3/video/details?videoId=${encodeURIComponent(videoId)}&urlAccess=normal&renderableFormats=720p%2C360p%2Chighres&getTranscript=false`,
+          `https://social-media-video-downloader.p.rapidapi.com/youtube/v3/video/details?videoId=${encodeURIComponent(videoId)}&urlAccess=normal&getTranscript=false`,
           {
             headers: {
               "x-rapidapi-key": apiKey,
@@ -34,58 +48,58 @@ export const Route = createFileRoute("/api/public/yt-proxy")({
           return new Response(`Resolver failed (${metaRes.status})`, { status: 502 });
         }
 
-        type V = {
+        type Stream = {
           url?: string;
           metadata?: {
             height?: number;
             has_audio?: boolean;
             has_video?: boolean;
             mime_type?: string;
+            bitrate?: number;
           };
         };
         const data = (await metaRes.json()) as {
-          contents?: Array<{ videos?: V[] }>;
+          contents?: Array<{ videos?: Stream[]; audios?: Stream[] }>;
         };
-        const videos = data.contents?.[0]?.videos ?? [];
-        const chosen = [...videos].sort((a, b) => {
-          const aw = a.metadata?.has_audio && a.metadata?.has_video ? 1 : 0;
-          const bw = b.metadata?.has_audio && b.metadata?.has_video ? 1 : 0;
-          if (aw !== bw) return bw - aw;
-          return (b.metadata?.height ?? 0) - (a.metadata?.height ?? 0);
-        })[0];
+        const all = data.contents ?? [];
+
+        let chosen: Stream | undefined;
+        if (kind === "video") {
+          const videos = all.flatMap((c) => c.videos ?? []);
+          // Prefer mp4/avc1 at <=720p for ffmpeg.wasm compatibility.
+          chosen = [...videos]
+            .filter((v) => (v.metadata?.mime_type || "").startsWith("video/mp4"))
+            .sort((a, b) => {
+              const ah = a.metadata?.height ?? 0;
+              const bh = b.metadata?.height ?? 0;
+              const aPenalty = ah > 720 ? 1 : 0;
+              const bPenalty = bh > 720 ? 1 : 0;
+              if (aPenalty !== bPenalty) return aPenalty - bPenalty;
+              return bh - ah;
+            })[0];
+          if (!chosen) chosen = videos[0];
+        } else {
+          const audios = all.flatMap((c) => c.audios ?? []);
+          // Prefer mp4/aac for clean mux with mp4 video.
+          chosen = [...audios]
+            .filter((a) => (a.metadata?.mime_type || "").startsWith("audio/mp4"))
+            .sort(
+              (a, b) => (b.metadata?.bitrate ?? 0) - (a.metadata?.bitrate ?? 0),
+            )[0];
+          if (!chosen) chosen = audios[0];
+        }
 
         if (!chosen?.url) {
-          return new Response("No stream available", { status: 404 });
+          return new Response(`No ${kind} stream available`, { status: 404 });
         }
 
-        const range = request.headers.get("range") ?? undefined;
-        const upstream = await fetch(chosen.url, {
-          headers: range ? { Range: range } : {},
-          redirect: "follow",
-        });
-
-        const headers = new Headers();
-        for (const h of [
-          "content-type",
-          "content-length",
-          "content-range",
-          "accept-ranges",
-        ]) {
-          const v = upstream.headers.get(h);
-          if (v) headers.set(h, v);
-        }
-        if (!headers.has("content-type")) {
-          headers.set(
-            "content-type",
-            (chosen.metadata?.mime_type || "video/mp4").split(";")[0],
-          );
-        }
-        headers.set("Access-Control-Allow-Origin", "*");
-        headers.set("Cache-Control", "no-store");
-
-        return new Response(upstream.body, {
-          status: upstream.status,
-          headers,
+        return new Response(null, {
+          status: 302,
+          headers: {
+            Location: chosen.url,
+            "Access-Control-Allow-Origin": "*",
+            "Cache-Control": "no-store",
+          },
         });
       },
       OPTIONS: async () =>

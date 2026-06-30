@@ -50,6 +50,7 @@ type ResolvePayload = {
   title: string;
   durationSec: number;
   streamUrl: string;
+  audioUrl?: string;
   mimeType: string;
   quality: string;
   thumbnail?: string;
@@ -153,7 +154,8 @@ async function resolveWithRapidApi(
     videoId,
     title: data.title ?? fallbackTitle ?? "YouTube video",
     durationSec,
-    streamUrl: `/api/public/yt-proxy?id=${encodeURIComponent(videoId)}`,
+    streamUrl: `/api/public/yt-proxy?id=${encodeURIComponent(videoId)}&kind=video`,
+    audioUrl: `/api/public/yt-proxy?id=${encodeURIComponent(videoId)}&kind=audio`,
     mimeType: chosen.metadata?.mime_type?.split(";")[0] || "video/mp4",
     quality: chosen.metadata?.height ? `${chosen.metadata.height}p` : "auto",
     thumbnail,
