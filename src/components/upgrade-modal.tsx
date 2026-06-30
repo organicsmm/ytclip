@@ -1,6 +1,10 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Check, Sparkles, Zap } from "lucide-react";
+import { Check, Sparkles, Zap, Loader2 } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
+import { openCheckout, type PlanId } from "@/lib/paddle";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface Props {
   open: boolean;
