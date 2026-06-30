@@ -8,7 +8,7 @@
  * No external APIs. No external workers.
  */
 import { FFmpeg } from "@ffmpeg/ffmpeg";
-import { fetchFile, toBlobURL } from "@ffmpeg/util";
+import { toBlobURL } from "@ffmpeg/util";
 import { supabase } from "@/integrations/supabase/client";
 import { ensureSessionUser } from "@/lib/session";
 import { generateClipSuggestions } from "@/lib/ai.functions";
@@ -124,22 +124,27 @@ async function runPipeline(videoId: string, userId: string, params: StartParams)
   if (upErr) throw new Error(`Upload failed: ${upErr.message}`);
   await push("✅ Source uploaded to Lovable Cloud storage", { progress: 20 });
 
-  // 2. Load ffmpeg + probe duration
+  // 2. Load ffmpeg + probe duration. Mounting the File through WORKERFS avoids
+  // copying large YouTube MP4s into wasm memory up front, which is where the UI
+  // could sit forever at 35% on some browsers.
   await push("🛠️  Loading ffmpeg.wasm in the browser…", {
     stage: "transcribing",
     progress: 28,
   });
   const ff = await getFFmpeg();
-  await push("   ffmpeg ready", { progress: 35 });
+  await push("   ffmpeg ready · mounting source without memory copy…", { progress: 34 });
 
-  const inputName = `in.${ext}`;
-  await ff.writeFile(inputName, await fetchFile(params.file));
+  const mountPoint = `/input-${videoId}`;
+  const mountedName = `source.${ext.toLowerCase()}`;
+  const inputName = `${mountPoint}/${mountedName}`;
+  await prepareMountedInput(ff, mountPoint, mountedName, params.file);
+  await push("   source mounted · reading duration…", { progress: 36 });
 
   let duration = 0;
   try {
-    duration = await probeDuration(params.file, 8000);
+    duration = await probeDuration(params.file, 6000);
   } catch {
-    await push("   browser couldn't read metadata, probing with ffmpeg…");
+    await push("   browser couldn't read metadata, probing with ffprobe…", { progress: 38 });
   }
   if (!duration || !isFinite(duration)) {
     duration = await probeDurationWithFFmpeg(ff, inputName);
@@ -189,7 +194,7 @@ async function runPipeline(videoId: string, userId: string, params: StartParams)
 
     await push(`   rendering ${i + 1}/${suggestions.length} · ${c.title.slice(0, 40)}…`);
 
-    await ff.exec([
+    const exitCode = await ff.exec([
       "-ss",
       startStr,
       "-i",
@@ -221,7 +226,10 @@ async function runPipeline(videoId: string, userId: string, params: StartParams)
       "-threads",
       "0",
       outName,
-    ]);
+    ], 300_000);
+    if (exitCode !== 0) {
+      throw new Error(`Clip ${i + 1} render timed out or failed`);
+    }
 
     const fileData = (await ff.readFile(outName)) as Uint8Array;
     const blob = new Blob([fileData as BlobPart], { type: "video/mp4" });
@@ -258,17 +266,36 @@ async function runPipeline(videoId: string, userId: string, params: StartParams)
     await push(`   ✅ clip ${i + 1} uploaded`, { progress: pct });
   }
 
-  try {
-    await ff.deleteFile(inputName);
-  } catch {
-    /* ignore */
-  }
+  await cleanupMountedInput(ff, mountPoint);
 
   await push("🎉 Pipeline complete · clips ready to download", { progress: 100 });
   await supabase
     .from("videos")
     .update({ status: "completed", stage: "completed", progress: 100, log_lines: log })
     .eq("id", videoId);
+}
+
+async function prepareMountedInput(ff: FFmpeg, mountPoint: string, name: string, file: File) {
+  await cleanupMountedInput(ff, mountPoint);
+  try {
+    await ff.createDir(mountPoint);
+  } catch {
+    /* directory may already exist after a previous attempt */
+  }
+  await ff.mount("WORKERFS" as never, { blobs: [{ name, data: file }] }, mountPoint);
+}
+
+async function cleanupMountedInput(ff: FFmpeg, mountPoint: string) {
+  try {
+    await ff.unmount(mountPoint);
+  } catch {
+    /* ignore */
+  }
+  try {
+    await ff.deleteDir(mountPoint);
+  } catch {
+    /* ignore */
+  }
 }
 
 function probeDuration(file: File, timeoutMs = 8000): Promise<number> {
@@ -302,6 +329,37 @@ function probeDuration(file: File, timeoutMs = 8000): Promise<number> {
 }
 
 async function probeDurationWithFFmpeg(ff: FFmpeg, inputName: string): Promise<number> {
+  const probeOut = `duration-${Date.now()}.txt`;
+  try {
+    const code = await ff.ffprobe(
+      [
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
+        inputName,
+        "-o",
+        probeOut,
+      ],
+      20_000,
+    );
+    if (code === 0) {
+      const data = await ff.readFile(probeOut, "utf8");
+      const parsed = Number(String(data).trim());
+      if (Number.isFinite(parsed) && parsed > 0) return parsed;
+    }
+  } catch {
+    /* fall through to log parsing */
+  } finally {
+    try {
+      await ff.deleteFile(probeOut);
+    } catch {
+      /* ignore */
+    }
+  }
+
   let dur = 0;
   const handler = ({ message }: { message: string }) => {
     // ffmpeg prints e.g. "  Duration: 00:01:23.45, start: 0.000000, ..."
@@ -312,8 +370,9 @@ async function probeDurationWithFFmpeg(ff: FFmpeg, inputName: string): Promise<n
   };
   ff.on("log", handler);
   try {
-    // -f null with no output forces ffmpeg to read & print metadata, then exit.
-    await ff.exec(["-i", inputName, "-f", "null", "-"]).catch(() => {});
+    // Running with no output prints container metadata and exits quickly; don't
+    // use `-f null -` here because that decodes the whole video.
+    await ff.exec(["-hide_banner", "-i", inputName], 20_000).catch(() => {});
   } finally {
     ff.off("log", handler);
   }
