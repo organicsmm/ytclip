@@ -12,8 +12,10 @@ After deploy, Modal prints a public URL like:
 Save it as MODAL_YT_URL in Lovable secrets, and set MODAL_AUTH_TOKEN to any
 random string you also configure here as a Modal secret named "yt-auth".
 
-Create the Modal secret once:
-    modal secret create yt-auth MODAL_AUTH_TOKEN=<same-token-you-use-in-lovable>
+Create/update the Modal secret with BOTH values. If you add cookies later, do
+not overwrite the token:
+    $cookies = Get-Content cookies.txt -Raw
+    modal secret create yt-auth MODAL_AUTH_TOKEN=<same-token-you-use-in-lovable> YT_COOKIES_TXT="$cookies" --force
 
 Endpoint:
     GET  /?url=<youtube-url>     -> 302 redirect to a temporary signed mp4
@@ -74,7 +76,14 @@ def _require_bearer(authorization: str | None) -> None:
 
     expected = os.environ.get("MODAL_AUTH_TOKEN", "")
     if not expected:
-        raise HTTPException(status_code=500, detail="server missing MODAL_AUTH_TOKEN")
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Modal secret yt-auth is missing MODAL_AUTH_TOKEN. Recreate it with: "
+                "modal secret create yt-auth MODAL_AUTH_TOKEN=<same-token-as-Lovable> "
+                "YT_COOKIES_TXT=\"$cookies\" --force"
+            ),
+        )
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="missing bearer token")
     if not hmac.compare_digest(authorization.removeprefix("Bearer ").strip(), expected):
