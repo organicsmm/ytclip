@@ -402,7 +402,7 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
           step={1}
           value={clipCount}
           onChange={(e) => setClipCount(Number(e.target.value))}
-          className="mt-3 h-1.5 w-full cursor-pointer appearance-none rounded-full bg-surface accent-primary"
+          className="mt-3 h-2 w-full cursor-pointer appearance-none rounded-full bg-border accent-primary"
         />
         <div className="mt-1 flex justify-between font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
           <span>1</span>
