@@ -111,6 +111,7 @@ def download(video_id: str) -> dict:
         return _json.loads(meta_file.read_text())
 
     import yt_dlp  # type: ignore
+    import random
 
     tmp_template = str(out_dir / "raw.%(ext)s")
 
@@ -120,6 +121,21 @@ def download(video_id: str) -> dict:
     if cookies_txt:
         cookies_path = str(out_dir / "cookies.txt")
         Path(cookies_path).write_text(cookies_txt)
+
+    # Optional proxy rotation. Modal secret YT_PROXIES is a newline- or
+    # comma-separated list of proxy URLs, e.g.:
+    #   http://user:pass@p104.instantproxies.com:8910
+    #   http://user:pass@p105.instantproxies.com:8909
+    # A random proxy is picked per download so traffic spreads across IPs and
+    # YouTube's bot-check is less likely to fingerprint the datacenter origin.
+    proxy_url = None
+    proxies_raw = os.environ.get("YT_PROXIES", "").strip()
+    if proxies_raw:
+        candidates = [p.strip() for p in proxies_raw.replace(",", "\n").splitlines() if p.strip()]
+        if candidates:
+            picked = random.choice(candidates)
+            # Accept bare host:port or user:pass@host:port and normalize to http://
+            proxy_url = picked if "://" in picked else f"http://{picked}"
 
     ydl_opts = {
         "format": "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best[height<=720]",
