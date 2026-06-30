@@ -76,14 +76,14 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "AutoCliper — Turn Long Videos Into Viral Shorts" },
+      { title: "Skate AI — Turn Long Videos Into Viral Shorts" },
       {
         name: "description",
         content:
           "AutoCliper transcribes, ranks, and renders the most engaging moments from any long-form video into vertical shorts — no install required.",
       },
       { name: "author", content: "AutoCliper" },
-      { property: "og:title", content: "AutoCliper — Turn Long Videos Into Viral Shorts" },
+      { property: "og:title", content: "Skate AI — Turn Long Videos Into Viral Shorts" },
       {
         property: "og:description",
         content:
@@ -92,6 +92,12 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:site", content: "@AutoCliper" },
+      { name: "twitter:title", content: "Skate AI — Turn Long Videos Into Viral Shorts" },
+      { name: "description", content: "Clip Crafter is an AI-powered web app that automatically creates viral video shorts from long-form content." },
+      { property: "og:description", content: "Clip Crafter is an AI-powered web app that automatically creates viral video shorts from long-form content." },
+      { name: "twitter:description", content: "Clip Crafter is an AI-powered web app that automatically creates viral video shorts from long-form content." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/180afd75-788a-43ef-822a-262c325ba77e/id-preview-50da15f5--a82efefa-5ab9-401d-80b8-d28c688dae7f.lovable.app-1782799916281.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/180afd75-788a-43ef-822a-262c325ba77e/id-preview-50da15f5--a82efefa-5ab9-401d-80b8-d28c688dae7f.lovable.app-1782799916281.png" },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
