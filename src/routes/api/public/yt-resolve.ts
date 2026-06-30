@@ -44,7 +44,7 @@ type ResolvePayload = {
   mimeType: string;
   quality: string;
   thumbnail?: string;
-  source: "modal";
+  source: "modal" | "rapidapi";
 };
 
 async function hmacHex(value: string, secret: string): Promise<string> {
@@ -128,6 +128,83 @@ async function resolveWithModal(
   }
 }
 
+async function resolveWithRapidApi(
+  videoId: string,
+  modalError?: string,
+): Promise<{ ok: ResolvePayload } | { err: string; status?: number } | null> {
+  const apiKey = process.env.RAPIDAPI_KEY;
+  if (!apiKey) return null;
+
+  try {
+    const res = await fetch(
+      `https://social-media-video-downloader.p.rapidapi.com/youtube/v3/video/details?videoId=${encodeURIComponent(videoId)}&urlAccess=normal&getTranscript=false`,
+      {
+        headers: {
+          "x-rapidapi-key": apiKey,
+          "x-rapidapi-host": "social-media-video-downloader.p.rapidapi.com",
+        },
+      },
+    );
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      console.error("[rapidapi] details failed", res.status, body.slice(0, 500));
+      return { err: `RapidAPI ${res.status}: ${body.slice(0, 200) || res.statusText}`, status: 502 };
+    }
+
+    type Stream = {
+      url?: string;
+      metadata?: {
+        height?: number;
+        has_audio?: boolean;
+        has_video?: boolean;
+        mime_type?: string;
+        bitrate?: number;
+      };
+    };
+    const data = (await res.json()) as {
+      title?: string;
+      videoDetails?: { title?: string; lengthSeconds?: string | number; thumbnails?: Array<{ url?: string }> };
+      contents?: Array<{ videos?: Stream[]; audios?: Stream[] }>;
+    };
+    const all = data.contents ?? [];
+    const videos = all.flatMap((c) => c.videos ?? []);
+    const audios = all.flatMap((c) => c.audios ?? []);
+    const chosenVideo = [...videos]
+      .filter((v) => (v.metadata?.mime_type || "").startsWith("video/mp4"))
+      .sort((a, b) => {
+        const ah = a.metadata?.height ?? 0;
+        const bh = b.metadata?.height ?? 0;
+        const aPenalty = ah > 720 ? 1 : 0;
+        const bPenalty = bh > 720 ? 1 : 0;
+        if (aPenalty !== bPenalty) return aPenalty - bPenalty;
+        return bh - ah;
+      })[0] ?? videos[0];
+    const chosenAudio = [...audios]
+      .filter((a) => (a.metadata?.mime_type || "").startsWith("audio/mp4"))
+      .sort((a, b) => (b.metadata?.bitrate ?? 0) - (a.metadata?.bitrate ?? 0))[0] ?? audios[0];
+
+    if (!chosenVideo?.url) return { err: "RapidAPI returned no video stream", status: 502 };
+    if (!chosenAudio?.url) return { err: "RapidAPI returned no audio stream", status: 502 };
+
+    return {
+      ok: {
+        videoId,
+        title: data.videoDetails?.title ?? data.title ?? "YouTube video",
+        durationSec: Number(data.videoDetails?.lengthSeconds ?? 0),
+        streamUrl: `/api/public/yt-proxy?id=${encodeURIComponent(videoId)}&kind=video`,
+        audioUrl: `/api/public/yt-proxy?id=${encodeURIComponent(videoId)}&kind=audio`,
+        mimeType: chosenVideo.metadata?.mime_type ?? "video/mp4",
+        quality: `${chosenVideo.metadata?.height ?? 720}p`,
+        thumbnail: data.videoDetails?.thumbnails?.at(-1)?.url,
+        source: "rapidapi",
+      },
+    };
+  } catch (e) {
+    console.error("[rapidapi] fetch threw", e, modalError ? `after modal error: ${modalError}` : "");
+    return { err: `RapidAPI network error: ${(e as Error).message}`, status: 502 };
+  }
+}
+
 export const Route = createFileRoute("/api/public/yt-resolve")({
   server: {
     handlers: {
@@ -179,13 +256,21 @@ export const Route = createFileRoute("/api/public/yt-resolve")({
         const modalResult = await resolveWithModal(videoId, cleanYtUrlEarly);
         if (modalResult && "ok" in modalResult) return Response.json(modalResult.ok);
         const modalErr = modalResult && "err" in modalResult ? modalResult.err : "Modal not configured";
-        const upstreamStatus = modalResult && "err" in modalResult ? modalResult.status ?? 502 : 503;
+        const rapidResult = await resolveWithRapidApi(videoId, modalErr);
+        if (rapidResult && "ok" in rapidResult) return Response.json(rapidResult.ok);
+        const rapidErr = rapidResult && "err" in rapidResult ? rapidResult.err : "RapidAPI not configured";
+        const upstreamStatus =
+          rapidResult && "err" in rapidResult
+            ? rapidResult.status ?? 502
+            : modalResult && "err" in modalResult
+              ? modalResult.status ?? 502
+              : 503;
 
         // YouTube/Modal failures are expected operational failures, not app crashes.
         // Return 200 so the UI can render its existing fallback/workaround panel instead
         // of the preview treating the API response as an unhandled 5xx runtime error.
         return Response.json(
-          { error: modalErr, upstreamStatus, source: "modal", retryable: true },
+          { error: `${modalErr}; fallback failed: ${rapidErr}`, upstreamStatus, source: "modal", retryable: true },
           { status: 200, headers: { "Cache-Control": "no-store" } },
         );
       },
