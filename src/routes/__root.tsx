@@ -126,6 +126,12 @@ function RootShell({ children }: { children: ReactNode }) {
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
 
+  useEffect(() => {
+    void ensureSessionUser().catch((err) => {
+      console.error("[auth] anonymous sign-in failed", err);
+    });
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <div className="min-h-screen">
