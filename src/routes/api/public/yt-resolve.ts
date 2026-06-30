@@ -68,6 +68,20 @@ type RapidApiDetails = {
   contents?: Array<{ videos?: RapidStream[]; audios?: RapidStream[] }>;
 };
 
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function hmacHex(value: string, secret: string): Promise<string> {
   const enc = new TextEncoder();
   const key = await crypto.subtle.importKey(
@@ -168,6 +182,30 @@ function pickRapidAudio(audios: RapidStream[]): RapidStream | undefined {
     .sort((a, b) => (b.metadata?.bitrate ?? 0) - (a.metadata?.bitrate ?? 0))[0] ?? audios[0];
 }
 
+async function probeRapidStream(stream: RapidStream, label: string): Promise<string | null> {
+  if (!stream.url) return `${label} stream is missing URL`;
+  try {
+    const res = await fetchWithTimeout(
+      stream.url,
+      {
+        headers: {
+          Range: "bytes=0-1023",
+          "User-Agent": "Mozilla/5.0",
+          "Accept-Language": "en-US,en;q=0.9",
+        },
+        redirect: "follow",
+      },
+      8000,
+    );
+    await res.body?.cancel().catch(() => undefined);
+    if (res.ok || res.status === 206) return null;
+    return `${label} stream rejected by upstream (${res.status})`;
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    return `${label} stream probe failed: ${message}`;
+  }
+}
+
 async function resolveWithRapidApi(
   videoId: string,
 ): Promise<{ ok: ResolvePayload } | { err: string; status?: number } | null> {
@@ -203,6 +241,13 @@ async function resolveWithRapidApi(
     const durationSec = typeof durationRaw === "number" ? durationRaw : Number(durationRaw ?? 0) || 0;
     const needsAudio = video.metadata?.has_audio === false && !!audio?.url;
     const height = video.metadata?.height;
+
+    const videoProbeError = await probeRapidStream(video, "RapidAPI video");
+    if (videoProbeError) return { err: videoProbeError, status: 502 };
+    if (needsAudio && audio) {
+      const audioProbeError = await probeRapidStream(audio, "RapidAPI audio");
+      if (audioProbeError) return { err: audioProbeError, status: 502 };
+    }
 
     return {
       ok: {

@@ -25,7 +25,21 @@ export const Route = createFileRoute("/api/public/yt-proxy")({
           return new Response("Server missing RAPIDAPI_KEY", { status: 500 });
         }
 
-        const metaRes = await fetch(
+        const fetchWithTimeout = async (
+          input: RequestInfo | URL,
+          init: RequestInit,
+          timeoutMs: number,
+        ): Promise<Response> => {
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), timeoutMs);
+          try {
+            return await fetch(input, { ...init, signal: controller.signal });
+          } finally {
+            clearTimeout(timer);
+          }
+        };
+
+        const metaRes = await fetchWithTimeout(
           `https://social-media-video-downloader.p.rapidapi.com/youtube/v3/video/details?videoId=${encodeURIComponent(videoId)}&urlAccess=normal&getTranscript=false`,
           {
             headers: {
@@ -33,6 +47,7 @@ export const Route = createFileRoute("/api/public/yt-proxy")({
               "x-rapidapi-host": "social-media-video-downloader.p.rapidapi.com",
             },
           },
+          12000,
         );
 
         if (!metaRes.ok) {
@@ -85,14 +100,26 @@ export const Route = createFileRoute("/api/public/yt-proxy")({
         }
 
         const range = request.headers.get("range") ?? undefined;
-        const upstream = await fetch(chosen.url, {
-          headers: {
-            "User-Agent": "Mozilla/5.0",
-            "Accept-Language": "en-US,en;q=0.9",
-            ...(range ? { Range: range } : {}),
-          },
-          redirect: "follow",
-        });
+        let upstream: Response;
+        try {
+          upstream = await fetchWithTimeout(chosen.url, {
+            headers: {
+              "User-Agent": "Mozilla/5.0",
+              "Accept-Language": "en-US,en;q=0.9",
+              ...(range ? { Range: range } : {}),
+            },
+            redirect: "follow",
+          }, 15000);
+        } catch (e) {
+          const message = e instanceof Error ? e.message : String(e);
+          return new Response(`Stream download timed out: ${message}`, {
+            status: 502,
+            headers: {
+              "Access-Control-Allow-Origin": "*",
+              "Cache-Control": "no-store",
+            },
+          });
+        }
 
         if (!upstream.ok && upstream.status !== 206) {
           const body = await upstream.text().catch(() => "");
