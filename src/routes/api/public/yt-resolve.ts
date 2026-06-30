@@ -179,9 +179,15 @@ export const Route = createFileRoute("/api/public/yt-resolve")({
         const modalResult = await resolveWithModal(videoId, cleanYtUrlEarly);
         if (modalResult && "ok" in modalResult) return Response.json(modalResult.ok);
         const modalErr = modalResult && "err" in modalResult ? modalResult.err : "Modal not configured";
-        const status = modalResult && "err" in modalResult ? modalResult.status ?? 502 : 503;
+        const upstreamStatus = modalResult && "err" in modalResult ? modalResult.status ?? 502 : 503;
 
-        return Response.json({ error: modalErr }, { status });
+        // YouTube/Modal failures are expected operational failures, not app crashes.
+        // Return 200 so the UI can render its existing fallback/workaround panel instead
+        // of the preview treating the API response as an unhandled 5xx runtime error.
+        return Response.json(
+          { error: modalErr, upstreamStatus, source: "modal", retryable: true },
+          { status: 200, headers: { "Cache-Control": "no-store" } },
+        );
       },
     },
   },
