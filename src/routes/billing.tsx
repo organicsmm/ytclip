@@ -130,9 +130,14 @@ function BillingPage() {
               <p className="mt-1 text-sm text-muted-foreground">
                 ${planInfo.price}/month · {data.monthly_limit} videos per month
               </p>
-              <p className="mt-2 font-mono text-[11px] uppercase tracking-wider text-foreground/55">
-                Status: <span className="text-foreground">{data.status}</span>
-              </p>
+              <div className="mt-3 flex items-center gap-2">
+                <StatusBadge status={data.status} />
+                {data.paddle_subscription_id && (
+                  <span className="font-mono text-[10px] uppercase tracking-wider text-foreground/40">
+                    · sub {data.paddle_subscription_id.slice(0, 10)}…
+                  </span>
+                )}
+              </div>
             </div>
           </div>
           <Button
@@ -142,6 +147,26 @@ function BillingPage() {
             {isPaid ? "Change plan" : "Upgrade"}
           </Button>
         </div>
+
+        {isPaid && data.current_period_end && (
+          <div className="mt-6 grid gap-3 rounded-xl border border-border/60 bg-surface/40 p-4 sm:grid-cols-2">
+            <div>
+              <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-foreground/55">
+                {data.status === "canceled" || data.status === "cancelled"
+                  ? "Access ends"
+                  : "Next billing date"}
+              </p>
+              <p className="mt-1 text-sm font-medium">{formatDate(data.current_period_end)}</p>
+            </div>
+            <div>
+              <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-foreground/55">
+                Renews in
+              </p>
+              <p className="mt-1 text-sm font-medium">{formatRelative(data.current_period_end)}</p>
+            </div>
+          </div>
+        )}
+
 
         <div className="mt-8 border-t border-border/60 pt-6">
           <div className="flex items-baseline justify-between">
