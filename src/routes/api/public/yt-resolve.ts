@@ -39,12 +39,9 @@ export const Route = createFileRoute("/api/public/yt-resolve")({
           const status = info.playability_status?.status;
           if (status && status !== "OK") {
             const reason = info.playability_status?.reason ?? status;
-            return Response.json(
-              {
-                error: `YouTube blocked extraction (${status}: ${reason}). All free public resolvers are currently bot-walled. Please download the MP4 manually and use Local Upload.`,
-              },
-              { status: 502 },
-            );
+            return Response.json({
+              error: `YouTube blocked extraction (${status}: ${reason}). All free public resolvers are currently bot-walled. Please download the MP4 manually and use Local Upload.`,
+            });
           }
 
           // Try progressive (audio+video) first — modern videos rarely have these above 360p
@@ -73,13 +70,10 @@ export const Route = createFileRoute("/api/public/yt-resolve")({
           }
 
           if (!chosen || !streamUrl) {
-            return Response.json(
-              {
-                error:
-                  "No playable mp4 stream available for this video (it may be live, age-restricted, or members-only).",
-              },
-              { status: 502 },
-            );
+            return Response.json({
+              error:
+                "No playable mp4 stream available for this video (it may be live, age-restricted, or members-only).",
+            });
           }
 
           return Response.json({
@@ -92,10 +86,7 @@ export const Route = createFileRoute("/api/public/yt-resolve")({
           });
         } catch (e) {
           const msg = e instanceof Error ? e.message : "Failed to resolve";
-          return Response.json(
-            { error: `InnerTube error: ${msg}` },
-            { status: 502 },
-          );
+          return Response.json({ error: `InnerTube error: ${msg}` });
         }
       },
     },

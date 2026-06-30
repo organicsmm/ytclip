@@ -39,17 +39,18 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
     setYtStatus("Resolving YouTube video…");
     onPreStageChange?.({ kind: "resolving" });
     const resolveRes = await fetch(`/api/public/yt-resolve?url=${encodeURIComponent(ytUrl)}`);
-    if (!resolveRes.ok) {
-      const body = await resolveRes.json().catch(() => ({}));
-      throw new Error(body.error || `Resolve failed (${resolveRes.status})`);
-    }
-    const meta = (await resolveRes.json()) as {
-      title: string;
-      streamUrl: string;
-      mimeType: string;
-      durationSec: number;
+    const meta = (await resolveRes.json().catch(() => ({}))) as {
+      title?: string;
+      streamUrl?: string;
+      mimeType?: string;
+      durationSec?: number;
+      error?: string;
     };
-    setYtStatus(`Downloading "${meta.title}"…`);
+    if (!resolveRes.ok || meta.error || !meta.streamUrl) {
+      throw new Error(meta.error || `Resolve failed (${resolveRes.status})`);
+    }
+    const title = meta.title || "YouTube video";
+    setYtStatus(`Downloading "${title}"…`);
     onPreStageChange?.({ kind: "downloading", loaded: 0, total: 0 });
     const proxied = `/api/public/yt-proxy?u=${encodeURIComponent(meta.streamUrl)}`;
     const dl = await fetch(proxied);
@@ -71,17 +72,17 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
         const pctTxt = total
           ? ` (${Math.round((loaded / total) * 100)}%)`
           : "";
-        setYtStatus(`Downloading "${meta.title}"…${pctTxt}`);
+        setYtStatus(`Downloading "${title}"…${pctTxt}`);
         onPreStageChange?.({ kind: "downloading", loaded, total });
       }
     }
     onPreStageChange?.({ kind: "downloading", loaded, total });
     const blob = new Blob(chunks as BlobPart[], { type: meta.mimeType || "video/mp4" });
-    const safeName = meta.title.replace(/[^\w\s-]/g, "").slice(0, 60) || "youtube-video";
+    const safeName = title.replace(/[^\w\s-]/g, "").slice(0, 60) || "youtube-video";
     const file = new File([blob], `${safeName}.mp4`, { type: meta.mimeType || "video/mp4" });
     setYtStatus(null);
     onPreStageChange?.({ kind: "uploading" });
-    return { file, title: meta.title };
+    return { file, title };
   };
 
   const handleSubmit = async () => {
