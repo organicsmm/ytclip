@@ -33,6 +33,7 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
   const [faceTracking, setFaceTracking] = useState(false);
   const [clipCount, setClipCount] = useState(5);
   const [submitting, setSubmitting] = useState(false);
+  const [ytError, setYtError] = useState<string | null>(null);
 
   const fetchYouTube = async (): Promise<{ file: File; title: string }> => {
     setYtStatus("Resolving YouTube video…");
