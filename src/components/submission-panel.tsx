@@ -86,6 +86,7 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
 
   const handleSubmit = async () => {
     setSubmitting(true);
+    setYtError(null);
     try {
       let sourceFile: File | null = file;
       let title = file?.name.replace(/\.[^.]+$/, "") ?? "";
@@ -95,9 +96,15 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
           toast.error("Paste a YouTube URL first");
           return;
         }
-        const fetched = await fetchYouTube();
-        sourceFile = fetched.file;
-        title = fetched.title;
+        try {
+          const fetched = await fetchYouTube();
+          sourceFile = fetched.file;
+          title = fetched.title;
+        } catch (e) {
+          const message = e instanceof Error ? e.message : "YouTube fetch failed";
+          setYtError(message);
+          return;
+        }
       } else if (!sourceFile) {
         toast.error("Choose a video file to upload");
         return;
@@ -126,6 +133,23 @@ export function SubmissionPanel({ onJobStarted, onPreStageChange, disabled }: Pr
       setYtStatus(null);
     }
   };
+
+  const switchToUpload = () => {
+    setTab("upload");
+    setYtError(null);
+    setYtStatus(null);
+    onPreStageChange?.({ kind: "idle" });
+  };
+
+  const ytVideoId = (() => {
+    try {
+      const u = new URL(ytUrl);
+      if (u.hostname.includes("youtu.be")) return u.pathname.slice(1).split("/")[0] || "";
+      return u.searchParams.get("v") ?? "";
+    } catch {
+      return "";
+    }
+  })();
 
   return (
     <div className="glass-card rounded-2xl p-6 sm:p-8">
