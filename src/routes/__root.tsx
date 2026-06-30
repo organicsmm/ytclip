@@ -4,16 +4,18 @@ import {
   Link,
   createRootRouteWithContext,
   useRouter,
+  useRouterState,
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { Toaster } from "@/components/ui/sonner";
 import { AppHeader } from "@/components/app-header";
-import { ensureSessionUser } from "@/lib/session";
+import { supabase } from "@/integrations/supabase/client";
+
 
 function NotFoundComponent() {
   return (
@@ -131,20 +133,57 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const router = useRouter();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const [authChecked, setAuthChecked] = useState(false);
+  const [signedIn, setSignedIn] = useState(false);
 
   useEffect(() => {
-    void ensureSessionUser().catch((err) => {
-      console.error("[auth] anonymous sign-in failed", err);
+    let cancelled = false;
+    void supabase.auth.getSession().then(({ data }) => {
+      if (cancelled) return;
+      const user = data.session?.user;
+      setSignedIn(Boolean(user && !user.is_anonymous));
+      setAuthChecked(true);
     });
-  }, []);
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event !== "SIGNED_IN" && event !== "SIGNED_OUT" && event !== "USER_UPDATED") return;
+      const user = session?.user;
+      setSignedIn(Boolean(user && !user.is_anonymous));
+      void router.invalidate();
+      if (event !== "SIGNED_OUT") queryClient.invalidateQueries();
+    });
+    return () => {
+      cancelled = true;
+      sub.subscription.unsubscribe();
+    };
+  }, [router, queryClient]);
+
+  const isAuthRoute = pathname === "/auth";
+
+  useEffect(() => {
+    if (!authChecked) return;
+    if (!signedIn && !isAuthRoute) {
+      void router.navigate({ to: "/auth", replace: true });
+    }
+  }, [authChecked, signedIn, isAuthRoute, router]);
 
   return (
     <QueryClientProvider client={queryClient}>
       <div className="min-h-screen">
-        <AppHeader />
-        <Outlet />
+        {!isAuthRoute && <AppHeader signedIn={signedIn} />}
+        {authChecked && (signedIn || isAuthRoute) ? <Outlet /> : <AuthLoading />}
         <Toaster theme="light" position="bottom-right" />
       </div>
     </QueryClientProvider>
   );
 }
+
+function AuthLoading() {
+  return (
+    <div className="flex min-h-[60vh] items-center justify-center">
+      <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary/40 border-t-primary" />
+    </div>
+  );
+}
+
