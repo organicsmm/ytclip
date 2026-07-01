@@ -21,9 +21,11 @@ async def get_quota(
         sub_res = user_client.table("subscriptions") \
                              .select("current_period_end, paddle_subscription_id") \
                              .eq("user_id", user_id) \
-                             .maybe_single() \
                              .execute()
-        return quota_res.data, sub_res.data
+                             
+        quota_data = quota_res.data if quota_res else None
+        sub_data = sub_res.data[0] if (sub_res and sub_res.data and len(sub_res.data) > 0) else {}
+        return quota_data, sub_data
         
     try:
         quota_data, sub_data = await asyncio.to_thread(fetch_quota_and_subscription)

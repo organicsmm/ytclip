@@ -169,13 +169,15 @@ async def get_video(
     
     def fetch_video_and_clips():
         # Query video row (scopes to owner via RLS)
-        v_res = user_client.table("videos").select("*").eq("id", video_id).maybe_single().execute()
-        if not v_res.data:
+        v_res = user_client.table("videos").select("*").eq("id", video_id).execute()
+        v_data = v_res.data[0] if (v_res and v_res.data and len(v_res.data) > 0) else None
+        if not v_data:
             return None, None
             
         # Query clips row (scopes to owner via RLS)
         c_res = user_client.table("clips").select("*").eq("video_id", video_id).order("score", desc=True).execute()
-        return v_res.data, c_res.data
+        clips_data = c_res.data if c_res else []
+        return v_data, clips_data
         
     video, clips = await asyncio.to_thread(fetch_video_and_clips)
     if not video:
